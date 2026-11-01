@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CAIPORAH CLOUD GAMER</title>
+<style>
+:root{--bg:#0e1612;--sf:#16221c;--ln:#2a3d33;--tx:#e8f0ea;--mu:#8fa699;--em:#f0a23b;--ok:#5fcf8a;--bad:#ef6b5b;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif}
+header{padding:14px 16px 0;border-bottom:1px solid var(--ln)}
+.logo{font:800 1.15rem/1 Georgia,serif;letter-spacing:.04em;color:var(--em)}.logo small{color:var(--mu);font:500 .8rem system-ui;margin-left:8px}
+nav{display:flex;gap:4px;overflow-x:auto;margin-top:10px}nav a{padding:10px 12px;color:var(--mu);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+nav a.on{color:var(--tx);border-color:var(--em)}
+main{padding:16px;max-width:760px;margin:auto}h2{font:700 1.4rem Georgia,serif;margin:.2em 0 .8em}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:14px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--ln)}.row:last-child{border:0}.row span:first-child{color:var(--mu)}
+input,select,button{font:inherit;width:100%;padding:12px;margin:4px 0 8px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--tx)}
+button{background:var(--em);color:#1a1205;border:0;font-weight:700;cursor:pointer}button.alt{background:transparent;color:var(--tx);border:1px solid var(--ln)}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--em);outline-offset:2px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tag{padding:2px 8px;border-radius:99px;font-size:.8rem;border:1px solid}
+.on-s{color:var(--ok)}.off-s{color:var(--bad)}.demo{color:var(--em);border-color:var(--em)}
+.warn{border-color:var(--em);color:var(--em)}.err{color:var(--bad);min-height:1.5em}.mu{color:var(--mu);font-size:.9rem}
+</style></head><body>
+<header><div class="logo">CAIPORAH<small>CLOUD GAMER</small></div><nav id="nav"></nav></header>
+<main id="m"></main>
+<script>
+const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tok=sessionStorage.getItem('t');
+const PAGES=[['dashboard','Dashboard'],['devices','Dispositivos'],['sessions','Sessões AFK'],['monitor','Monitoramento'],['settings','Configurações'],['help','Ajuda e limitações']];
+async function api(p,method='GET',body){
+  const r=await fetch('/api'+p,{method,headers:{'Content-Type':'application/json',...(tok?{Authorization:'Bearer '+tok}:{})},body:body?JSON.stringify(body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(r.status===401&&tok&&p!=='/auth/login'){out();}
+  if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:(d.detail?.[0]?.msg||'Erro '+r.status));
+  return d;}
+function out(){tok=null;sessionStorage.removeItem('t');go('login');}
+const fmt=t=>t?new Date(t).toLocaleString('pt-BR'):'nunca';
+const st=d=>d.state==='online'?'<b class="on-s">online</b>':d.state==='offline'?'<b class="off-s">offline</b>':'<b class="mu">não verificado</b>';
+const dm=d=>d.demo?' <span class="tag demo">DEMO</span>':'';
+const row=(a,b)=>`<div class="row"><span>${a}</span><span>${b}</span></div>`;
+const SL={active:'ativa',stopped:'encerrada',interrupted:'interrompida'};
+const V={
+login:async()=>`<h2>Entrar</h2><div class="card"><label>Usuário<input id="u" autocomplete="username"></label><label>Senha<input id="p" type="password" autocomplete="current-password"></label><p class="err" id="e"></p><button id="go">Entrar</button></div><p class="mu">Primeiro acesso: veja o usuário e a senha no log de inicialização do servidor ou em ADMIN_PASSWORD.</p>`,
+dashboard:async()=>{const[ds,ss]=await Promise.all([api('/devices'),api('/sessions')]);const a=ss.find(s=>s.status==='active');const d=a&&ds.find(x=>x.id===a.device_id);
+ return `<h2>Dashboard</h2>${(d&&d.demo)?'<div class="card warn">MODO DEMO: esta sessão é simulada. Nenhum Android real está conectado.</div>':''}
+ <div class="card">${row('Dispositivo',d?E(d.name)+dm(d):'nenhum em uso')}${row('Estado do dispositivo',d?st(d):'—')}${row('Estado da sessão',a?'<b class="on-s">ativa</b>':'sem sessão ativa')}
+ ${row('Tempo de execução',a?`<span data-t="${E(a.started_at)}"></span>`:'—')}${row('Jogo conectado',a?E(a.package)+(a.game_running===0?' <b class="off-s">(fechado)</b>':a.game_running===null?' <span class="mu">(não verificado)</span>':''):'—')}
+ ${row('Última comunicação',d?fmt(d.last_seen):'—')}${row('Conexão',d?E(d.reason):'—')}</div>
+ ${a?`<button id="dis">Desconectar</button>`:`<div class="card"><b>Conectar</b><select id="dv">${ds.map(x=>`<option value="${x.id}">${E(x.name)}${x.demo?' (DEMO)':''}</option>`).join('')||'<option value="">cadastre um dispositivo antes</option>'}</select><input id="pk" placeholder="pacote do jogo, ex.: com.empresa.jogo"><p class="err" id="e"></p><button id="con">Conectar</button></div>`}
+ <button class="alt" id="ref">Atualizar status</button>
+ <h2>Histórico</h2>${ss.slice(0,10).map(s=>`<div class="card">${E(s.device_name)}${s.demo?dm({demo:1}):''}<br><span class="mu">${E(s.package)} · ${SL[s.status]} · ${fmt(s.started_at)}</span></div>`).join('')||'<p class="mu">Nenhuma sessão ainda.</p>'}`},
+devices:async()=>{const ds=await api('/devices');return `<h2>Dispositivos</h2>${ds.map(d=>`<div class="card"><b>${E(d.name)}</b>${dm(d)}<br>${st(d)} <span class="mu">${E(d.reason)}</span><br><span class="mu">Último contato: ${fmt(d.last_seen)}</span><div class="btns"><button class="alt" data-r="${d.id}">Verificar</button><button class="alt" data-x="${d.id}">Remover</button></div></div>`).join('')||'<p class="mu">Nenhum dispositivo cadastrado.</p>'}
+ <div class="card"><b>Novo dispositivo</b><input id="n" placeholder="nome"><select id="pv"><option value="demo">DEMO (simulado)</option><option value="adb">Android real via ADB</option></select><input id="ad" placeholder="endereço ADB, ex.: 100.64.0.5:5555"><p class="err" id="e"></p><button id="add">Cadastrar</button></div>`},
+sessions:async()=>{const ss=await api('/sessions');return `<h2>Sessões AFK</h2>${ss.map(s=>`<div class="card"><b>${E(s.device_name)}</b>${s.demo?dm({demo:1}):''} <span class="tag">${SL[s.status]}</span><br><span class="mu">${E(s.package)}<br>Início: ${fmt(s.started_at)}<br>Fim: ${s.ended_at?fmt(s.ended_at)+' ('+E(s.end_reason)+')':'em andamento'}</span>${s.status==='active'?`<button data-s="${s.id}">Encerrar</button>`:''}</div>`).join('')||'<p class="mu">Nenhuma sessão registrada.</p>'}`},
+monitor:async()=>{const[ev,ds]=await Promise.all([api('/events'),api('/devices')]);return `<h2>Monitoramento</h2><button id="ref">Verificar agora</button>${ds.map(d=>`<div class="card">${E(d.name)}${dm(d)}: ${st(d)}<br><span class="mu">Verificado em ${fmt(d.last_check)}</span></div>`).join('')}<h2>Registro</h2>${ev.map(e=>`<div class="row"><span>${fmt(e.at)}</span><span class="${e.level==='warn'?'off-s':''}">${E(e.message)}</span></div>`).join('')}`},
+settings:async()=>{const p=await api('/providers');return `<h2>Configurações</h2><button class="alt" id="lo">Sair da conta</button><h2>Provedores</h2>${p.map(x=>`<div class="card"><b>${E(x.nome)}</b> <span class="tag">${E(x.status)}</span>${row('Limite grátis',E(x.limite_gratis))}${row('Duração',E(x.duracao))}${row('Suspensão',E(x.suspensao))}${row('Cartão',E(x.cartao))}${row('Android',E(x.android))}${row('Jogos',E(x.jogos))}${row('AFK',E(x.afk))}</div>`).join('')}`},
+help:async()=>`<h2>Ajuda e limitações</h2><div class="card"><p>O painel mostra apenas o que foi verificado. Um dispositivo só aparece online se respondeu à última verificação.</p><p>O modo DEMO é simulado e nunca é uma sessão AFK real.</p><p>Se o aparelho ou servidor Android desligar, o jogo para e a sessão aparece como interrompida.</p><p>Planos grátis de nuvem normalmente não rodam Android com GPU, e GitHub Actions, Codespaces e Colab não são servidores permanentes.</p><p>Este sistema não contorna anti-cheat, CAPTCHA nem regras dos jogos. Confirme que o AFK é permitido no jogo que você usa.</p></div>`};
+async function go(n){if(!tok)n='login';else if(n==='login')n='dashboard';location.hash=n;
+ $('#nav').innerHTML=tok?PAGES.map(([k,l])=>`<a href="#${k}" class="${k===n?'on':''}">${l}</a>`).join(''):'';
+ try{$('#m').innerHTML=await V[n]();}catch(x){$('#m').innerHTML=`<p class="err">${E(x.message)}</p>`;return}
+ bind(n);tick();}
+const on=(s,f)=>{const e=$(s);if(e)e.onclick=f};
+const act=(fn)=>async()=>{try{await fn()}catch(x){const e=$('#e');if(e)e.textContent=x.message;else alert(x.message)}};
+function bind(n){
+ on('#go',act(async()=>{const r=await api('/auth/login','POST',{username:$('#u').value,password:$('#p').value});tok=r.token;sessionStorage.setItem('t',tok);go('dashboard')}));
+ on('#con',act(async()=>{await api('/sessions','POST',{device_id:+$('#dv').value,package:$('#pk').value.trim()});go(n)}));
+ on('#dis',act(async()=>{const a=(await api('/sessions')).find(s=>s.status==='active');await api('/sessions/'+a.id+'/stop','POST');go(n)}));
+ on('#ref',act(async()=>{for(const d of await api('/devices'))await api('/devices/'+d.id+'/refresh','POST');go(n)}));
+ on('#add',act(async()=>{await api('/devices','POST',{name:$('#n').value,provider:$('#pv').value,address:$('#ad').value||null});go(n)}));
+ on('#lo',act(async()=>{await api('/auth/logout','POST');out()}));
+ document.querySelectorAll('[data-r]').forEach(b=>b.onclick=act(async()=>{await api('/devices/'+b.dataset.r+'/refresh','POST');go(n)}));
+ document.querySelectorAll('[data-x]').forEach(b=>b.onclick=act(async()=>{if(confirm('Remover dispositivo?')){await api('/devices/'+b.dataset.x,'DELETE');go(n)}}));
+ document.querySelectorAll('[data-s]').forEach(b=>b.onclick=act(async()=>{await api('/sessions/'+b.dataset.s+'/stop','POST');go(n)}));}
+function tick(){document.querySelectorAll('[data-t]').forEach(e=>{const s=Math.max(0,(Date.now()-new Date(e.dataset.t))/1000|0);e.textContent=`${s/3600|0}h ${(s%3600)/60|0}min ${s%60}s`})}
+setInterval(tick,1000);window.onhashchange=()=>{const h=location.hash.slice(1);if(V[h])go(h)};
+go(location.hash.slice(1)||'dashboard');
+</script></body></html>
