@@ -2,6 +2,9 @@ package com.lucasmoraes.claudgame.overlay
 
 import android.Manifest
 import android.app.Service
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -25,6 +28,8 @@ import kotlin.math.abs
 class ClaudGameOverlayService : Service() {
     companion object {
         const val EXTRA_TROLL = "troll"
+        private const val CHANNEL = "claudgame_overlay"
+        private const val NOTIFICATION_ID = 1002
     }
 
     private lateinit var windowManager: WindowManager
@@ -40,6 +45,7 @@ class ClaudGameOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        createChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -53,6 +59,15 @@ class ClaudGameOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(
+            NOTIFICATION_ID,
+            Notification.Builder(this, CHANNEL)
+                .setContentTitle("ClaudGame")
+                .setContentText("Companheiro IA ativo")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setOngoing(true)
+                .build()
+        )
         trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: trollEnabled
         if (panel == null) showOverlay()
         return START_STICKY
@@ -252,6 +267,12 @@ class ClaudGameOverlayService : Service() {
         }
         panel = null
         super.onDestroy()
+    }
+
+    private fun createChannel() {
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL, "ClaudGame Companion", NotificationManager.IMPORTANCE_LOW)
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
