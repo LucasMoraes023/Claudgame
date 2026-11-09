@@ -38,6 +38,13 @@ class ScreenCaptureService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var trollEnabled = false
 
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            releaseCapture()
+            stopSelf()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
@@ -52,7 +59,6 @@ class ScreenCaptureService : Service() {
                 if (result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
                 ) {
-                    // Dá tempo para o motor de voz assumir o áudio antes de falar.
                     mainHandler.postDelayed({
                         speak("ClaudGame ativado. Bora jogar.", "claudgame-start")
                     }, 800)
@@ -81,58 +87,75 @@ class ScreenCaptureService : Service() {
         val data = intent.getParcelableExtra(EXTRA_RESULT_DATA) as? Intent
             ?: return START_NOT_STICKY
 
-        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projection = manager.getMediaProjection(resultCode, data)
+        try {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            projection = manager.getMediaProjection(resultCode, data)
+                ?: throw IllegalStateException("MediaProjection indisponível")
 
-        val metrics = DisplayMetrics()
-        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
+            // Android 14+ exige um callback registrado antes de iniciar a captura.
+            projection?.registerCallback(projectionCallback, mainHandler)
 
-        val width = (metrics.widthPixels / 2).coerceAtLeast(360)
-        val height = (metrics.heightPixels / 2).coerceAtLeast(640)
+            val metrics = DisplayMetrics()
+            val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
 
-        reader = ImageReader.newInstance(
-            width, height, android.graphics.PixelFormat.RGBA_8888, 2
-        )
-        reader?.setOnImageAvailableListener({ imageReader ->
-            imageReader.acquireLatestImage()?.close()
-        }, null)
+            val width = (metrics.widthPixels / 2).coerceAtLeast(360)
+            val height = (metrics.heightPixels / 2).coerceAtLeast(640)
 
-        virtualDisplay = projection?.createVirtualDisplay(
-            "ClaudGameCapture",
-            width,
-            height,
-            metrics.densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader?.surface,
-            null,
-            null
-        )
+            reader = ImageReader.newInstance(
+                width, height, android.graphics.PixelFormat.RGBA_8888, 2
+            )
+            reader?.setOnImageAvailableListener({ imageReader ->
+                imageReader.acquireLatestImage()?.close()
+            }, mainHandler)
 
-        return START_STICKY
+            virtualDisplay = projection?.createVirtualDisplay(
+                "ClaudGameCapture",
+                width,
+                height,
+                metrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                reader?.surface,
+                null,
+                null
+            )
+        } catch (e: Exception) {
+            // Nunca deixar uma falha de captura derrubar o processo do ClaudGame.
+            releaseCapture()
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        return START_NOT_STICKY
     }
 
     private fun speak(text: String, utteranceId: String) {
         if (!ttsReady) return
 
         val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
-            return
-        }
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
 
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
+    private fun releaseCapture() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        reader?.close()
+        reader = null
+        projection?.unregisterCallback(projectionCallback)
+        projection?.stop()
+        projection = null
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        releaseCapture()
         tts?.stop()
         tts?.shutdown()
         tts = null
         ttsReady = false
-        reader?.close()
-        virtualDisplay?.release()
-        projection?.stop()
         super.onDestroy()
     }
 
