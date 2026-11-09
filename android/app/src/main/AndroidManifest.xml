@@ -24,6 +24,6 @@
         <service
             android:name=".overlay.ClaudGameOverlayService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+             />
     </application>
 </manifest>
