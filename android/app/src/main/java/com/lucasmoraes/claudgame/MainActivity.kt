@@ -61,27 +61,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadGames() {
         val pm = packageManager
+        val installed = pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
+            .filter { it.packageName != packageName }
 
-        // Mostra somente aplicativos que o Android classifica como JOGO.
-        // Isso evita que Configurações, Câmera, Play Store e outros apps
-        // apareçam no seletor do ClaudGame.
-        games = pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
-            .filter { app ->
-                app.packageName != packageName &&
-                    app.category == ApplicationInfo.CATEGORY_GAME &&
-                    pm.getLaunchIntentForPackage(app.packageName) != null
+        // Primeiro usa a classificação oficial de JOGO do Android.
+        var found = installed
+            .filter {
+                it.category == ApplicationInfo.CATEGORY_GAME &&
+                    pm.getLaunchIntentForPackage(it.packageName) != null
             }
-            .map { app ->
-                GameApp(
-                    label = pm.getApplicationLabel(app).toString(),
-                    packageName = app.packageName
-                )
-            }
+            .map { GameApp(pm.getApplicationLabel(it).toString(), it.packageName) }
+
+        // Alguns jogos não declaram CATEGORY_GAME. Como o ClaudGame é
+        // um hub/launcher, usa como fallback os apps instalados pelo usuário
+        // que possuem uma tela de lançamento, evitando apps de sistema.
+        if (found.isEmpty()) {
+            found = installed
+                .filter {
+                    (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
+                        pm.getLaunchIntentForPackage(it.packageName) != null
+                }
+                .map { GameApp(pm.getApplicationLabel(it).toString(), it.packageName) }
+        }
+
+        games = found
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
 
         val labels = if (games.isEmpty()) {
-            listOf("Nenhum jogo instalado")
+            listOf("Nenhum jogo/app instalável encontrado")
         } else {
             games.map { it.label }
         }
@@ -89,10 +97,10 @@ class MainActivity : AppCompatActivity() {
         gameSpinner.adapter =
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
 
-        status.text = if (games.isEmpty()) {
-            "Nenhum jogo compatível encontrado"
-        } else {
-            games.size.toString() + if (games.size == 1) " jogo encontrado" else " jogos encontrados"
+        status.text = when {
+            games.isEmpty() -> "Nenhum jogo instalável encontrado"
+            games.size == 1 -> "1 jogo/app encontrado"
+            else -> games.size.toString() + " jogos/apps encontrados"
         }
     }
 
@@ -100,7 +108,7 @@ class MainActivity : AppCompatActivity() {
         if (games.isEmpty()) {
             Toast.makeText(
                 this,
-                "Nenhum jogo compatível instalado foi encontrado.",
+                "Nenhum jogo instalável encontrado.",
                 Toast.LENGTH_LONG
             ).show()
             return
