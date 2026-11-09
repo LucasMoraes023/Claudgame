@@ -7,6 +7,8 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -26,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private var games = emptyList<GameApp>()
     private var trollEnabled = false
     private var pendingCapture = false
+    private var pendingGamePackage: String? = null
 
     private val microphonePermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -41,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     private val capturePermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                startService(Intent(this, ClaudGameOverlayService::class.java).apply {
+                startForegroundService(Intent(this, ClaudGameOverlayService::class.java).apply {
                 putExtra(ClaudGameOverlayService.EXTRA_TROLL, trollEnabled)
             })
 
@@ -52,6 +55,17 @@ class MainActivity : AppCompatActivity() {
                 }
                 startForegroundService(serviceIntent)
                 status.text = "IA ativa • observando e pronta para conversar"
+
+                // A autorização de captura abre uma tela do sistema. Depois que ela termina,
+                // iniciamos o jogo escolhido e deixamos o ClaudGame trabalhando em segundo plano.
+                pendingGamePackage?.let { packageNameToLaunch ->
+                    pendingGamePackage = null
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        packageManager.getLaunchIntentForPackage(packageNameToLaunch)?.let { launchIntent ->
+                            startActivity(launchIntent)
+                        }
+                    }, 350)
+                }
             } else {
                 status.text = "Captura de tela não autorizada"
             }
@@ -142,6 +156,15 @@ class MainActivity : AppCompatActivity() {
             })
             return
         }
+
+        val position = gameSpinner.selectedItemPosition
+        if (position !in games.indices) {
+            Toast.makeText(this, "Escolha um jogo antes de ativar o companheiro.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Guardamos o jogo escolhido para abri-lo automaticamente depois da autorização.
+        pendingGamePackage = games[position].packageName
 
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         capturePermission.launch(manager.createScreenCaptureIntent())
