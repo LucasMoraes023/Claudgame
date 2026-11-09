@@ -2,6 +2,7 @@ package com.lucasmoraes.claudgame
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
@@ -53,23 +54,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        loadGames()
+    }
+
     private fun loadGames() {
         val pm = packageManager
+
+        // Mostra somente aplicativos que o Android classifica como JOGO.
+        // Isso evita que Configurações, Câmera, Play Store e outros apps
+        // apareçam no seletor do ClaudGame.
         games = pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
-            .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != packageName }
-            .map { GameApp(pm.getApplicationLabel(it).toString(), it.packageName) }
+            .filter { app ->
+                app.packageName != packageName &&
+                    app.category == ApplicationInfo.CATEGORY_GAME &&
+                    pm.getLaunchIntentForPackage(app.packageName) != null
+            }
+            .map { app ->
+                GameApp(
+                    label = pm.getApplicationLabel(app).toString(),
+                    packageName = app.packageName
+                )
+            }
+            .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
 
-        val labels = if (games.isEmpty()) listOf("Nenhum jogo/app encontrado") else games.map { it.label }
-        gameSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
+        val labels = if (games.isEmpty()) {
+            listOf("Nenhum jogo instalado")
+        } else {
+            games.map { it.label }
+        }
+
+        gameSpinner.adapter =
+            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
+
+        status.text = if (games.isEmpty()) {
+            "Nenhum jogo compatível encontrado"
+        } else {
+            games.size.toString() + if (games.size == 1) " jogo encontrado" else " jogos encontrados"
+        }
     }
 
     private fun launchSelectedGame() {
         if (games.isEmpty()) {
-            Toast.makeText(this, "Nenhum jogo instalável com abertura foi encontrado.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Nenhum jogo compatível instalado foi encontrado.",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
-        val game = games[gameSpinner.selectedItemPosition]
+
+        val position = gameSpinner.selectedItemPosition
+        if (position !in games.indices) return
+
+        val game = games[position]
         packageManager.getLaunchIntentForPackage(game.packageName)?.let {
             status.text = "Abrindo " + game.label + "..."
             startActivity(it)
@@ -78,12 +118,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestAiCapture() {
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Autorize a sobreposição para o assistente flutuante.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Autorize a sobreposição para o assistente flutuante.",
+                Toast.LENGTH_LONG
+            ).show()
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
                 data = android.net.Uri.parse("package:" + packageName)
             })
             return
         }
+
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         capturePermission.launch(manager.createScreenCaptureIntent())
     }
