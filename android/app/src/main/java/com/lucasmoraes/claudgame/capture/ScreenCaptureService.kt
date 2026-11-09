@@ -9,14 +9,16 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.AudioManager
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
 import android.view.WindowManager
-import com.lucasmoraes.claudgame.R
 import com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService
 import java.util.Locale
 
@@ -33,14 +35,29 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var reader: ImageReader? = null
     private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var trollEnabled = false
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        tts = TextToSpeech(this) { status ->
+
+        tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale("pt", "BR")
-                tts?.speak("ClaudGame ativado. Bora jogar.", TextToSpeech.QUEUE_FLUSH, null, "claudgame-start")
+                ttsReady = true
+                val result = tts?.setLanguage(Locale("pt", "BR"))
+                tts?.setSpeechRate(1.0f)
+                tts?.setPitch(1.05f)
+
+                if (result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
+                    // Dá tempo para o motor de voz assumir o áudio antes de falar.
+                    mainHandler.postDelayed({
+                        speak("ClaudGame ativado. Bora jogar.", "claudgame-start")
+                    }, 800)
+                }
             }
         }
     }
@@ -55,6 +72,8 @@ class ScreenCaptureService : Service() {
                 .setOngoing(true)
                 .build()
         )
+
+        trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: false
 
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
             ?: return START_NOT_STICKY
@@ -81,7 +100,9 @@ class ScreenCaptureService : Service() {
             imageReader.acquireLatestImage()?.close()
         }, null)
 
-        startService(Intent(this, ClaudGameOverlayService::class.java))
+        startService(Intent(this, ClaudGameOverlayService::class.java).apply {
+            putExtra(ClaudGameOverlayService.EXTRA_TROLL, trollEnabled)
+        })
 
         virtualDisplay = projection?.createVirtualDisplay(
             "ClaudGameCapture",
@@ -97,10 +118,24 @@ class ScreenCaptureService : Service() {
         return START_STICKY
     }
 
+    private fun speak(text: String, utteranceId: String) {
+        if (!ttsReady) return
+
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+            return
+        }
+
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
+
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         stopService(Intent(this, ClaudGameOverlayService::class.java))
         tts?.stop()
         tts?.shutdown()
+        tts = null
+        ttsReady = false
         reader?.close()
         virtualDisplay?.release()
         projection?.stop()
