@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cg_bg">#090B12</color>
+    <color name="cg_panel">#121622</color>
+    <color name="cg_accent">#7C5CFF</color>
+    <color name="cg_cyan">#31D7FF</color>
+    <color name="cg_text">#F5F7FF</color>
+    <color name="cg_muted">#9BA4B8</color>
+</resources>
