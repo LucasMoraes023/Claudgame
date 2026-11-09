@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/cg_bg">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
-        <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CLAUDGAME" android:textColor="@color/cg_text" android:textSize="30sp" android:textStyle="bold" />
-        <TextView android:id="@+id/subtitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Game Booster • AI Companion" android:textColor="@color/cg_cyan" android:textSize="14sp" />
-        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:background="@drawable/panel_bg" android:padding="16dp" android:text="Pronto para jogar" android:textColor="@color/cg_text" android:textSize="16sp" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="SEUS JOGOS" android:textColor="@color/cg_muted" android:textSize="12sp" android:textStyle="bold" />
-        <Spinner android:id="@+id/gameSpinner" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="8dp" android:background="@drawable/input_bg" />
-        <Button android:id="@+id/playButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="14dp" android:text="INICIAR JOGO" android:textStyle="bold" />
-        <Button android:id="@+id/aiButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:text="ATIVAR COMPANHEIRO IA" />
-        <Button android:id="@+id/trollButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:text="MODO TROLAGEM: DESLIGADO" />
-        <TextView android:id="@+id/info" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="A IA só captura a tela depois que você autorizar o Android. O áudio usa os recursos nativos do aparelho." android:textColor="@color/cg_muted" android:textSize="13sp" />
-    </LinearLayout>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/cg_bg">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CLAUDGAME" android:textColor="@color/cg_text" android:textSize="30sp" android:textStyle="bold"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GAME HUB • AI COMPANION" android:textColor="@color/cg_cyan" android:textSize="13sp"/>
+<TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:background="@drawable/panel_bg" android:padding="18dp" android:text="Pronto para jogar" android:textColor="@color/cg_text" android:textSize="16sp"/>
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="JOGO DA SESSÃO" android:textColor="@color/cg_muted" android:textSize="12sp" android:textStyle="bold"/>
+<Spinner android:id="@+id/gameSpinner" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="8dp" android:background="@drawable/input_bg"/>
+<Button android:id="@+id/playButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="14dp" android:text="▶  INICIAR JOGO" android:textStyle="bold"/>
+<Button android:id="@+id/aiButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:text="◉  ATIVAR COMPANHEIRO IA"/>
+<Button android:id="@+id/trollButton" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="10dp" android:text="😈  MODO TROLAGEM: DESLIGADO"/>
+<TextView android:id="@+id/info" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="A captura de tela e o assistente só são ativados após sua autorização. O áudio usa o TTS nativo do Android." android:textColor="@color/cg_muted" android:textSize="13sp"/>
+</LinearLayout>
 </ScrollView>
