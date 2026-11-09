@@ -1,44 +1,87 @@
-# CAIPORAH CLOUD GAMER
+# CLAUDGAME
 
-Painel web (FastAPI + HTML) para acompanhar sessões de jogos em um Android remoto, com foco em AFK e custo zero.
+**ClaudGame** é o projeto Android de **Game Hub + Game Booster + AI Game Companion**.
 
-**Estado real do projeto (v0.1):** o painel, a API, o login, as sessões, o histórico e os testes funcionam. Só dois provedores existem: **DEMO** (simulado, nunca é AFK real) e **ADB** (aparelho Android real que você já possui). Não existe integração com nuvem Android, porque nenhum serviço gratuito foi verificado como adequado. Nada foi inventado.
+O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto principal agora está sendo construído em Android nativo (Kotlin) dentro de `android/`.
 
-## Rodar (sem computador)
-Pelo Claude Code com este repositório conectado, peça: "instale as dependências e rode os testes". Ou use o Termux no Android:
-```
-pip install -r requirements.txt
-ADMIN_PASSWORD=troque-esta-senha uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-Abra `http://localhost:8000`. Se `ADMIN_PASSWORD` ficar vazio, uma senha aleatória aparece no log de inicialização.
+## Objetivo
 
-## Testar sem Android
-Em Dispositivos, cadastre um dispositivo **DEMO** e conecte pelo Dashboard. Tudo aparece marcado como DEMO.
+- 🎮 Biblioteca de jogos instalados e acesso rápido.
+- ⚡ Modo de jogo usando somente recursos que o Android realmente permite controlar.
+- 👁️ Captura de tela com **MediaProjection**, sempre mediante autorização do usuário.
+- 🧠 Pipeline de IA preparado para analisar eventos relevantes em vez de enviar todos os frames continuamente.
+- 🗣️ Voz em português usando o TTS nativo do Android.
+- 🎙️ Conversa natural com o jogador.
+- 😈 **Modo Trolagem**, com intensidade configurável e respostas contextuais.
+- 🪟 Assistente flutuante sobre o jogo.
+- 🔐 Nenhuma chave de API deve ser embutida no APK.
 
-## Usar um Android real (ADB)
-1. No aparelho: ative Opções do desenvolvedor e depuração por Wi-Fi.
-2. O servidor da API precisa ter o `adb` instalado e alcançar o aparelho por rede privada (ex.: uma VPN como o Tailscale, que tem plano gratuito; confirme as condições atuais). Nunca exponha a porta ADB na internet.
-3. Cadastre o dispositivo com o endereço `ip:porta`. O painel só mostra online se o `adb get-state` responder.
-4. O jogo é verificado com `pidof <pacote>`. O app informa se o jogo fechou, mas não o reabre.
+## Fundação já implementada
 
-## Implantação gratuita
-Hospedar só a API/site em um plano gratuito de PaaS (ex.: Render, Koyeb, Fly.io) é possível, mas **confira os limites atuais**: planos grátis costumam hibernar e apagar o disco, o que apaga o SQLite. Comando de início: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. A hospedagem em nuvem não alcança um aparelho em rede doméstica sem VPN.
+- Projeto Gradle/Kotlin nativo.
+- Tela inicial ClaudGame.
+- Detecção de aplicativos instalados que podem ser iniciados.
+- Seleção e abertura de jogo.
+- Fluxo de autorização de sobreposição.
+- Fluxo de autorização MediaProjection.
+- Serviço foreground para captura.
+- Aquisição de frames com ImageReader.
+- TTS inicial em português.
+- Modo Trolagem como configuração local.
+- GitHub Actions para gerar APK debug.
 
-## Variáveis de ambiente
-`ADMIN_USER`, `ADMIN_PASSWORD`, `CAIPORAH_DB` (veja `.env.example`). Não commite o `.env`.
+## Arquitetura planejada
 
-## Segurança
-Senhas com PBKDF2; tokens guardados só como hash e válidos por 24 h; bloqueio após 5 logins falhos; validação de entrada; nenhum segredo no frontend (o token de sessão fica no `sessionStorage` do navegador). Use HTTPS na implantação.
+**Android**
+→ Game Hub  
+→ Game Session  
+→ Screen Capture  
+→ Frame Selector  
+→ OCR/Visão  
+→ AI Engine  
+→ Context Memory  
+→ Voice/TTS  
+→ Overlay
 
-## Limitações
-- Nenhuma nuvem Android gratuita e permanente foi integrada. GitHub Actions, Codespaces e Colab não servem como servidor AFK.
-- Se o aparelho ou servidor Android desligar, o jogo para e a sessão é marcada como interrompida no próximo "Atualizar status".
-- A verificação é por clique ou ao iniciar sessão; não há monitoramento automático em segundo plano.
-- Não há controle remoto de tela, instalação de APK nem reconexão automática.
-- O projeto não contorna anti-cheat nem CAPTCHA. Confirme que AFK é permitido no seu jogo.
+**Backend**
+→ autenticação  
+→ configuração do provedor  
+→ chamadas de IA  
+→ limites/segurança  
+→ observabilidade
 
-## Próximas etapas
-Monitoramento periódico em segundo plano, abrir o jogo via ADB (`monkey`), controle de tela (scrcpy), cadastro de novos usuários, integração real com um provedor de nuvem após validar seus limites.
+A chave de qualquer provedor de IA nunca deve ficar dentro do APK.
 
-## Testes
-`python -m pytest -q`
+## Booster: o que será real
+
+Não vamos prometer "aumentar FPS" por mágica. O Android não oferece uma API pública genérica para um aplicativo comum liberar RAM ou controlar o hardware de qualquer fabricante.
+
+O ClaudGame poderá, conforme suporte do aparelho/versão do Android, organizar sessão de jogo, modo imersivo, notificações, monitoramento e integrações legítimas de Game Mode.
+
+## Próximas implementações
+
+1. Game Hub com cartões e perfis por jogo.
+2. Overlay flutuante real com estado da IA.
+3. Seleção inteligente de frames e redução de consumo.
+4. OCR/visão e eventos de gameplay.
+5. Backend de IA com configuração segura.
+6. Reconhecimento de fala + diálogo natural.
+7. Modo Trolagem 0–100 com cooldown e contexto.
+8. Histórico de sessões e preferências.
+9. Testes Android e tratamento completo de permissões.
+10. Build release assinada e APK final.
+
+## Build
+
+Workflow: `.github/workflows/android-apk.yml`
+
+Saída:
+`android/app/build/outputs/apk/debug/app-debug.apk`
+
+Tecnologias:
+- Kotlin 2.0.21
+- Android Gradle Plugin 8.7.3
+- Gradle 8.9
+- Java 17
+- minSdk 26
+- targetSdk 35
