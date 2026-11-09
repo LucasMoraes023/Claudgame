@@ -32,6 +32,7 @@ class ClaudGameOverlayService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var speechInitializing = false
     private var trollEnabled = false
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
@@ -48,10 +49,7 @@ class ClaudGameOverlayService : Service() {
                 tts?.setPitch(1.05f)
             }
         }
-        if (SpeechRecognizer.isRecognitionAvailable(this)) {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-            speechRecognizer?.setRecognitionListener(listener)
-        }
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -124,8 +122,13 @@ class ClaudGameOverlayService : Service() {
         title.setOnTouchListener(dragListener(root, params))
         statusText.setOnTouchListener(dragListener(root, params))
 
-        windowManager.addView(root, params)
-        panel = root
+        try {
+            windowManager.addView(root, params)
+            panel = root
+        } catch (e: Exception) {
+            statusText.text = "Sobreposição não disponível"
+            panel = null
+        }
     }
 
     private fun dragListener(root: View, params: WindowManager.LayoutParams) =
@@ -160,11 +163,22 @@ class ClaudGameOverlayService : Service() {
             statusText.text = "Microfone não autorizado"
             return
         }
-        val recognizer = speechRecognizer ?: run {
-            statusText.text = "Reconhecimento de voz indisponível"
-            return
+        if (speechRecognizer == null) {
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                statusText.text = "Reconhecimento de voz indisponível"
+                return
+            }
+            try {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                speechRecognizer?.setRecognitionListener(listener)
+            } catch (e: Exception) {
+                statusText.text = "Não foi possível iniciar o microfone"
+                talkButton.text = "🎙 FALAR"
+                return
+            }
         }
 
+        val recognizer = speechRecognizer ?: return
         statusText.text = "● Ouvindo você..."
         talkButton.text = "⏹ PARAR"
 
