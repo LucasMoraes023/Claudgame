@@ -39,6 +39,7 @@ class ClaudGameOverlayService : Service() {
     private var ttsReady = false
     private var recognitionInProgress = false
     private var recognitionRetryCount = 0
+    private var serviceDestroyed = false
     private var trollEnabled = false
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
@@ -266,7 +267,7 @@ class ClaudGameOverlayService : Service() {
                 statusText.text = "● Não consegui captar. Tentando novamente..."
                 recreateSpeechRecognizer()
                 android.os.Handler(mainLooper).postDelayed({
-                    if (!isDestroyedCompat()) beginRecognition()
+                    if (!serviceDestroyed) beginRecognition()
                 }, 350L)
                 return
             }
@@ -311,8 +312,6 @@ class ClaudGameOverlayService : Service() {
         override fun onRmsChanged(rmsdB: Float) = Unit
     }
 
-    private fun isDestroyedCompat(): Boolean = panel == null && isFinishing
-
     private fun speak(text: String) {
         if (!ttsReady) {
             statusText.text = "Voz ainda inicializando..."
@@ -323,6 +322,7 @@ class ClaudGameOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        serviceDestroyed = true
         speechRecognizer?.destroy()
         speechRecognizer = null
         tts?.stop()
