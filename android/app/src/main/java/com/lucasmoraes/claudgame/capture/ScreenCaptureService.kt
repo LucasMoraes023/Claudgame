@@ -19,7 +19,6 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
 import android.view.WindowManager
-import com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService
 import java.util.Locale
 
 class ScreenCaptureService : Service() {
@@ -100,10 +99,6 @@ class ScreenCaptureService : Service() {
             imageReader.acquireLatestImage()?.close()
         }, null)
 
-        startService(Intent(this, ClaudGameOverlayService::class.java).apply {
-            putExtra(ClaudGameOverlayService.EXTRA_TROLL, trollEnabled)
-        })
-
         virtualDisplay = projection?.createVirtualDisplay(
             "ClaudGameCapture",
             width,
@@ -131,7 +126,6 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
-        stopService(Intent(this, ClaudGameOverlayService::class.java))
         tts?.stop()
         tts?.shutdown()
         tts = null
