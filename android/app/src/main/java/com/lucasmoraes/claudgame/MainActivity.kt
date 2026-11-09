@@ -43,11 +43,13 @@ class MainActivity : AppCompatActivity() {
         status = findViewById(R.id.status)
         gameSpinner = findViewById(R.id.gameSpinner)
         loadGames()
+
         findViewById<Button>(R.id.playButton).setOnClickListener { launchSelectedGame() }
         findViewById<Button>(R.id.aiButton).setOnClickListener { requestAiCapture() }
         findViewById<Button>(R.id.trollButton).setOnClickListener { view ->
             trollEnabled = !trollEnabled
-            (view as Button).text = if (trollEnabled) "MODO TROLAGEM: ATIVADO" else "MODO TROLAGEM: DESLIGADO"
+            (view as Button).text =
+                if (trollEnabled) "MODO TROLAGEM: ATIVADO" else "MODO TROLAGEM: DESLIGADO"
         }
     }
 
@@ -57,6 +59,7 @@ class MainActivity : AppCompatActivity() {
             .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != packageName }
             .map { GameApp(pm.getApplicationLabel(it).toString(), it.packageName) }
             .sortedBy { it.label.lowercase() }
+
         val labels = if (games.isEmpty()) listOf("Nenhum jogo/app encontrado") else games.map { it.label }
         gameSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
     }
