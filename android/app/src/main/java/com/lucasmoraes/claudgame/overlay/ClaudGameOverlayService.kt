@@ -37,7 +37,8 @@ class ClaudGameOverlayService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private var speechInitializing = false
+    private var recognitionInProgress = false
+    private var recognitionRetryCount = 0
     private var trollEnabled = false
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
@@ -107,7 +108,7 @@ class ClaudGameOverlayService : Service() {
                 setColor(Color.rgb(82, 64, 150))
                 cornerRadius = 22f
             }
-            setOnClickListener { startListening() }
+            setOnClickListener {\n                if (recognitionInProgress) stopListening() else startListening()\n            }
         }
         val troll = TextView(this).apply {
             text = if (trollEnabled) "😈 Trolagem: ATIVA" else "😈 Trolagem: DESLIGADA"
@@ -178,32 +179,62 @@ class ClaudGameOverlayService : Service() {
             statusText.text = "Microfone não autorizado"
             return
         }
-        if (speechRecognizer == null) {
-            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-                statusText.text = "Reconhecimento de voz indisponível"
-                return
-            }
-            try {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            statusText.text = "Reconhecimento de voz indisponível"
+            return
+        }
+
+        recognitionRetryCount = 0
+        beginRecognition()
+    }
+
+    private fun beginRecognition() {
+        try {
+            if (speechRecognizer == null) {
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
                 speechRecognizer?.setRecognitionListener(listener)
-            } catch (e: Exception) {
-                statusText.text = "Não foi possível iniciar o microfone"
-                talkButton.text = "🎙 FALAR"
-                return
             }
-        }
 
-        val recognizer = speechRecognizer ?: return
-        statusText.text = "● Ouvindo você..."
-        talkButton.text = "⏹ PARAR"
+            recognitionInProgress = true
+            statusText.text = "● Ouvindo você..."
+            talkButton.text = "⏹ PARAR"
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            }
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            recognitionInProgress = false
+            statusText.text = "Não foi possível iniciar o microfone"
+            talkButton.text = "🎙 FALAR"
         }
-        recognizer.startListening(intent)
+    }
+
+    private fun stopListening() {
+        recognitionInProgress = false
+        try {
+            speechRecognizer?.stopListening()
+        } catch (_: Exception) {
+        }
+        statusText.text = "● Pronto para conversar"
+        talkButton.text = "🎙 FALAR"
+    }
+
+    private fun recreateSpeechRecognizer() {
+        try {
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {
+        }
+        speechRecognizer = null
     }
 
     private val listener = object : RecognitionListener {
@@ -217,23 +248,47 @@ class ClaudGameOverlayService : Service() {
 
         override fun onEndOfSpeech() {
             statusText.text = "● Processando..."
-            talkButton.text = "🎙 FALAR"
         }
 
         override fun onError(error: Int) {
+            recognitionInProgress = false
+            talkButton.text = "🎙 FALAR"
+
+            // Alguns serviços de reconhecimento retornam NO_MATCH na primeira
+            // tentativa, especialmente sobre um jogo com áudio. Reiniciamos
+            // uma vez automaticamente para não obrigar o usuário a tocar no
+            // botão novamente.
+            if ((error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_CLIENT) &&
+                recognitionRetryCount < 1) {
+                recognitionRetryCount++
+                statusText.text = "● Não consegui captar. Tentando novamente..."
+                recreateSpeechRecognizer()
+                android.os.Handler(mainLooper).postDelayed({
+                    if (!isDestroyedCompat()) beginRecognition()
+                }, 350L)
+                return
+            }
+
             statusText.text = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH -> "Não entendi • tente falar novamente"
-                SpeechRecognizer.ERROR_NETWORK -> "Sem conexão para reconhecimento de voz"
-                SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone"
+                SpeechRecognizer.ERROR_NO_MATCH,
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não entendi • fale um pouco mais perto do microfone"
+                SpeechRecognizer.ERROR_NETWORK,
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Sem conexão para reconhecimento de voz"
+                SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone • verifique se outro app está usando o áudio"
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconhecimento ocupado • tente novamente"
                 else -> "Não consegui ouvir • tente novamente"
             }
-            talkButton.text = "🎙 FALAR"
         }
 
         override fun onResults(results: android.os.Bundle) {
+            recognitionInProgress = false
+            recognitionRetryCount = 0
+            talkButton.text = "🎙 FALAR"
             val text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
             if (text.isBlank()) {
-                statusText.text = "Não entendi"
+                statusText.text = "Não entendi • fale novamente"
                 return
             }
             statusText.text = "Você: $text"
@@ -241,11 +296,22 @@ class ClaudGameOverlayService : Service() {
             speak(response)
         }
 
-        override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+        override fun onPartialResults(partialResults: android.os.Bundle?) {
+            val text = partialResults
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+                .orEmpty()
+            if (text.isNotBlank()) {
+                statusText.text = "● Ouvindo: $text"
+            }
+        }
+
         override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onRmsChanged(rmsdB: Float) = Unit
     }
+
+    private fun isDestroyedCompat(): Boolean = panel == null && isFinishing
 
     private fun speak(text: String) {
         if (!ttsReady) {
