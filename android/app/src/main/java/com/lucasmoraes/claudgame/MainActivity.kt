@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.lucasmoraes.claudgame.capture.ScreenCaptureService
+import com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService
 
 data class GameApp(val label: String, val packageName: String)
 
@@ -40,7 +41,11 @@ class MainActivity : AppCompatActivity() {
     private val capturePermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                startService(Intent(this, ClaudGameOverlayService::class.java).apply {
+                putExtra(ClaudGameOverlayService.EXTRA_TROLL, trollEnabled)
+            })
+
+            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                     putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                     putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
                     putExtra(ScreenCaptureService.EXTRA_TROLL, trollEnabled)
