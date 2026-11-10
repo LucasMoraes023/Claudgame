@@ -110,7 +110,7 @@ class ScreenContextAnalyzer(
                 bytes = encode(candidate, 58)
             }
             if (bytes.isEmpty() || bytes.size > 3_500_000) return Pair(null, "unavailable")
-            Log.d("ClaudGameVision", "Frame convertido: \${candidate.width}x\${candidate.height}, \${bytes.size} bytes; brilho médio=\${"%.1f".format(average)}")
+            Log.d("ClaudGameVision", "Frame convertido: " + candidate.width + "x" + candidate.height + ", " + bytes.size + " bytes; brilho médio=" + average)
             return Pair(bytes, "ok")
         } catch (error: Exception) {
             Log.e("ClaudGameVision", "Falha ao converter RGBA em JPEG", error)
