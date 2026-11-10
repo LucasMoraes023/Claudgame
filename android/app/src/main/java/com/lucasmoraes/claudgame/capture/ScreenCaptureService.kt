@@ -18,7 +18,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
+import android.view.Surface
 import android.view.WindowManager
+import com.lucasmoraes.claudgame.ai.ScreenContextAnalyzer
 import java.util.Locale
 
 class ScreenCaptureService : Service() {
@@ -26,6 +28,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TROLL = "troll"
+        const val ACTION_SCREEN_CONTEXT = "com.lucasmoraes.claudgame.SCREEN_CONTEXT"
         private const val CHANNEL = "claudgame_capture"
         private const val NOTIFICATION_ID = 1001
     }
@@ -37,6 +40,8 @@ class ScreenCaptureService : Service() {
     private var ttsReady = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var trollEnabled = false
+    private var analyzer: ScreenContextAnalyzer? = null
+    private var lastAnalysisAt = 0L
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -48,6 +53,15 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+
+        analyzer = ScreenContextAnalyzer { context ->
+            sendBroadcast(
+                Intent(ACTION_SCREEN_CONTEXT).apply {
+                    setPackage(packageName)
+                    putExtra("context", context)
+                }
+            )
+        }
 
         tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -107,7 +121,23 @@ class ScreenCaptureService : Service() {
                 width, height, android.graphics.PixelFormat.RGBA_8888, 2
             )
             reader?.setOnImageAvailableListener({ imageReader ->
-                imageReader.acquireLatestImage()?.close()
+                val now = System.currentTimeMillis()
+                if (now - lastAnalysisAt < 1800L) {
+                    imageReader.acquireLatestImage()?.close()
+                    return@setOnImageAvailableListener
+                }
+
+                val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
+                lastAnalysisAt = now
+
+                val rotation = when (wm.defaultDisplay.rotation) {
+                    Surface.ROTATION_90 -> 90
+                    Surface.ROTATION_180 -> 180
+                    Surface.ROTATION_270 -> 270
+                    else -> 0
+                }
+
+                analyzer?.analyze(image, rotation)
             }, mainHandler)
 
             virtualDisplay = projection?.createVirtualDisplay(
@@ -151,6 +181,8 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        analyzer?.close()
+        analyzer = null
         releaseCapture()
         tts?.stop()
         tts?.shutdown()
