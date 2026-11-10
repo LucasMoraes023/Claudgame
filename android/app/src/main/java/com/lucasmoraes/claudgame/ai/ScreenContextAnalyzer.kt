@@ -28,8 +28,8 @@ class ScreenContextAnalyzer(
                         if (closed) return@addOnSuccessListener
                         val text = result.text.replace("\\s+".toRegex(), " ").trim()
                         val context = buildContext(text)
-                        if (context.isNotBlank()) lastContext = context
-                        safeNotify(context.ifBlank { lastContext }, jpeg, frameStatus)
+                        lastContext = context
+                        safeNotify(context, jpeg, frameStatus)
                     } catch (error: Exception) {
                         Log.w("ClaudGameVision", "Falha ao interpretar OCR", error)
                         if (!closed) safeNotify(lastContext, jpeg, frameStatus)
