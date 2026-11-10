@@ -6,6 +6,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -41,14 +43,35 @@ class ClaudGameOverlayService : Service() {
     private var recognitionRetryCount = 0
     private var serviceDestroyed = false
     private var trollEnabled = false
+    private var latestScreenContext = ""
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
     private val assistant = AssistantEngine()
+
+    private val screenContextReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            val value = intent?.getStringExtra("context").orEmpty()
+            if (value.isNotBlank()) {
+                latestScreenContext = value
+                if (!recognitionInProgress) {
+                    statusText.text = "● Tela analisada • pronto para conversar"
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val filter = IntentFilter(com.lucasmoraes.claudgame.capture.ScreenCaptureService.ACTION_SCREEN_CONTEXT)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(screenContextReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(screenContextReceiver, filter)
+        }
+
         tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsReady = true
@@ -298,7 +321,7 @@ class ClaudGameOverlayService : Service() {
                 return
             }
             statusText.text = "Você: $text"
-            val response = assistant.reply(text, trollEnabled)
+            val response = assistant.reply(text, trollEnabled, latestScreenContext)
             speak(response)
         }
 
@@ -328,6 +351,10 @@ class ClaudGameOverlayService : Service() {
 
     override fun onDestroy() {
         serviceDestroyed = true
+        try {
+            unregisterReceiver(screenContextReceiver)
+        } catch (_: Exception) {
+        }
         speechRecognizer?.destroy()
         speechRecognizer = null
         tts?.stop()
