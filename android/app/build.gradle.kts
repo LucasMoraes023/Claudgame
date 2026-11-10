@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-android {
+android {\n    buildFeatures { buildConfig = true }
     namespace = "com.lucasmoraes.claudgame"
 
     signingConfigs {
@@ -14,7 +14,7 @@ android {
         }
     }
     compileSdk = 35
-    defaultConfig {
+    defaultConfig {\n        buildConfigField("String", "AI_BACKEND_URL", "\\"${providers.gradleProperty("claudgameAiBackendUrl").orElse("").get().replace("\\", "\\\\").replace("\\"", "\\\\\"")}\\"")
         applicationId = "com.lucasmoraes.claudgame"
         minSdk = 26
         targetSdk = 35
