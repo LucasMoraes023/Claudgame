@@ -92,6 +92,15 @@ class MainActivity : AppCompatActivity() {
         loadGames()
     }
 
+    override fun onDestroy() {
+        // Fechar o Game Hub encerra a sessão; abrir o jogo apenas o coloca em segundo plano.
+        if (isFinishing && !isChangingConfigurations) {
+            stopService(Intent(this, ClaudGameOverlayService::class.java))
+            stopService(Intent(this, ScreenCaptureService::class.java))
+        }
+        super.onDestroy()
+    }
+
     private fun ensureVoiceAndCapture() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             pendingCapture = true
