@@ -55,11 +55,17 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         createChannel()
 
-        analyzer = ScreenContextAnalyzer { context ->
+        analyzer = ScreenContextAnalyzer { context, frameJpeg ->
+            val framePath = if (frameJpeg != null) {
+                runCatching {
+                    java.io.File(cacheDir, "latest_game_frame.jpg").apply { writeBytes(frameJpeg) }.absolutePath
+                }.getOrNull()
+            } else null
             sendBroadcast(
                 Intent(ACTION_SCREEN_CONTEXT).apply {
                     setPackage(packageName)
                     putExtra("context", context)
+                    putExtra("frame_path", framePath)
                 }
             )
         }
