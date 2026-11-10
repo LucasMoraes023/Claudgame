@@ -2,8 +2,12 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-android {\n    buildFeatures { buildConfig = true }
+
+val aiBackendUrl = providers.gradleProperty("claudgameAiBackendUrl").orElse("").get()
+
+android {
     namespace = "com.lucasmoraes.claudgame"
+    buildFeatures { buildConfig = true }
 
     signingConfigs {
         create("claudGameDebug") {
@@ -14,7 +18,8 @@ android {\n    buildFeatures { buildConfig = true }
         }
     }
     compileSdk = 35
-    defaultConfig {\n        buildConfigField("String", "AI_BACKEND_URL", "\\"${providers.gradleProperty("claudgameAiBackendUrl").orElse("").get().replace("\\", "\\\\").replace("\\"", "\\\\\"")}\\"")
+    defaultConfig {
+        buildConfigField("String", "AI_BACKEND_URL", "\"$aiBackendUrl\"")
         applicationId = "com.lucasmoraes.claudgame"
         minSdk = 26
         targetSdk = 35
@@ -41,6 +46,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
-    // IA local gratuita: OCR de texto diretamente no aparelho.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 }
