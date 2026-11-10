@@ -348,7 +348,7 @@ class ClaudGameOverlayService : Service() {
                 error == SpeechRecognizer.ERROR_SERVER &&
                 !triedOnDeviceFallback &&
                 android.os.Build.VERSION.SDK_INT >= 31 &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(this@ClaudGameOverlayService)
             ) {
                 triedOnDeviceFallback = true
                 if (::statusText.isInitialized) statusText.text = "● Serviço online falhou; tentando reconhecimento offline..."
