@@ -26,7 +26,6 @@ import android.widget.TextView
 import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
 import com.lucasmoraes.claudgame.ai.GameAiClient
 import com.lucasmoraes.claudgame.BuildConfig
-import java.util.Locale
 import kotlin.math.abs
 
 class ClaudGameOverlayService : Service() {
@@ -49,6 +48,7 @@ class ClaudGameOverlayService : Service() {
     private var latestScreenContext = ""
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
+    private val aiClient by lazy { GameAiClient(BuildConfig.AI_BACKEND_URL) }
 
     private val screenContextReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
@@ -387,6 +387,7 @@ class ClaudGameOverlayService : Service() {
         } catch (_: Exception) {
         }
         speechRecognizer = null
+        aiClient.close()
         try {
             tts?.stop()
             tts?.shutdown()
