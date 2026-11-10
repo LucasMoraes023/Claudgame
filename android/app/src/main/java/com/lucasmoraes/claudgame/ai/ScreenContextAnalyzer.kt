@@ -93,9 +93,10 @@ class ScreenContextAnalyzer(
                 return Pair(null, "black")
             }
 
-            bitmap = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-            bitmap.setPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
-            var candidate = bitmap
+            val baseBitmap = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+            bitmap = baseBitmap
+            baseBitmap.setPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
+            var candidate: Bitmap = baseBitmap
             var quality = 76
             var bytes = encode(candidate, quality)
             while (bytes.size > 3_300_000 && quality > 48) {
