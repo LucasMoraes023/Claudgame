@@ -55,11 +55,16 @@ class ClaudGameOverlayService : Service() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
             if (serviceDestroyed || !::statusText.isInitialized) return
             val value = intent?.getStringExtra("context").orEmpty()
-            if (value.isNotBlank()) {
-                latestScreenContext = value
-                if (!recognitionInProgress) {
-                    statusText.text = "● Tela analisada • pronto para conversar"
-                }
+            val framePath = intent?.getStringExtra("frame_path")
+            // O serviço de captura envia o caminho do JPEG junto com o OCR.
+            // Sem guardar esse caminho, a IA recebia apenas texto e nunca a imagem do jogo.
+            if (!framePath.isNullOrBlank() && java.io.File(framePath).isFile) {
+                latestScreenFramePath = framePath
+                android.util.Log.d("ClaudGameVision", "Frame recebido para análise: $framePath")
+            }
+            if (value.isNotBlank()) latestScreenContext = value
+            if (!recognitionInProgress && (value.isNotBlank() || latestScreenFramePath != null)) {
+                statusText.text = "● Tela capturada • pronto para conversar"
             }
         }
     }
