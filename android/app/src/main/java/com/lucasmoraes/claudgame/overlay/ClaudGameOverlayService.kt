@@ -56,15 +56,20 @@ class ClaudGameOverlayService : Service() {
             if (serviceDestroyed || !::statusText.isInitialized) return
             val value = intent?.getStringExtra("context").orEmpty()
             val framePath = intent?.getStringExtra("frame_path")
-            // O serviço de captura envia o caminho do JPEG junto com o OCR.
-            // Sem guardar esse caminho, a IA recebia apenas texto e nunca a imagem do jogo.
+            val frameStatus = intent?.getStringExtra("frame_status").orEmpty()
             if (!framePath.isNullOrBlank() && java.io.File(framePath).isFile) {
                 latestScreenFramePath = framePath
-                android.util.Log.d("ClaudGameVision", "Frame recebido para análise: $framePath")
+                android.util.Log.d("ClaudGameVision", "Frame JPEG válido recebido: $framePath")
+            } else if (frameStatus == "black" || frameStatus == "unavailable") {
+                latestScreenFramePath = null
+                android.util.Log.w("ClaudGameVision", "Frame atual indisponível: $frameStatus")
             }
             if (value.isNotBlank()) latestScreenContext = value
-            if (!recognitionInProgress && (value.isNotBlank() || latestScreenFramePath != null)) {
-                statusText.text = "● Tela capturada • pronto para conversar"
+            if (!recognitionInProgress) statusText.text = when (frameStatus) {
+                "ok" -> "● Imagem da tela recebida • pronto"
+                "black" -> "● Android entregou tela preta • captura bloqueada"
+                "unavailable" -> "● Falha ao converter a captura"
+                else -> "● Aguardando primeira imagem da tela"
             }
         }
     }

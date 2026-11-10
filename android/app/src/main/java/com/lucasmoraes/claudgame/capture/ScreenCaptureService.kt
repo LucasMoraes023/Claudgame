@@ -49,19 +49,21 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         createChannel()
 
-        analyzer = ScreenContextAnalyzer { context, frameJpeg ->
-            val framePath = if (frameJpeg != null) {
-                runCatching {
-                    java.io.File(cacheDir, "latest_game_frame.jpg").apply { writeBytes(frameJpeg) }.absolutePath
-                }.getOrNull()
-            } else null
-            sendBroadcast(
-                Intent(ACTION_SCREEN_CONTEXT).apply {
-                    setPackage(packageName)
-                    putExtra("context", context)
-                    putExtra("frame_path", framePath)
-                }
-            )
+        analyzer = ScreenContextAnalyzer { context, frameJpeg, frameStatus ->
+            val frameFile = java.io.File(cacheDir, "latest_game_frame.jpg")
+            val framePath = if (frameStatus == "ok" && frameJpeg != null) {
+                runCatching { frameFile.writeBytes(frameJpeg); frameFile.absolutePath }.getOrNull()
+            } else {
+                runCatching { frameFile.delete() }
+                null
+            }
+            android.util.Log.i("ClaudGameVision", "Resultado da captura: status=$frameStatus, bytes=${frameJpeg?.size ?: 0}")
+            sendBroadcast(Intent(ACTION_SCREEN_CONTEXT).apply {
+                setPackage(packageName)
+                putExtra("context", context)
+                putExtra("frame_path", framePath)
+                putExtra("frame_status", if (framePath != null) "ok" else frameStatus)
+            })
         }
 
 

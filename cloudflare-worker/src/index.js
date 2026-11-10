@@ -32,6 +32,9 @@ export default {
       "Você é ClaudGame, um companheiro experiente de jogos, que conversa em português brasileiro.",
       "Responda de forma natural, direta e útil. Não invente elementos que não aparecem no contexto.",
       "Use o texto reconhecido na tela como evidência, mas deixe claro quando ele não for suficiente.",
+      input.image_status === "attached"
+        ? "Uma imagem real da tela foi anexada. Analise somente o que estiver visível nela e combine com o OCR."
+        : "ATENÇÃO: nenhuma imagem da tela foi recebida nesta pergunta. Não diga que está vendo, olhando ou analisando a imagem. Informe claramente que a captura não chegou e peça para o jogador tentar novamente.",
       "Dê orientações práticas e curtas que possam ser ouvidas durante uma partida.",
       input.troll_enabled ? "O modo brincalhão está ativo: use humor leve, sem atrapalhar a orientação." : "Não use provocações.",
       "Mensagem do jogador: " + message,

@@ -45,11 +45,14 @@ class GameAiClient(private val backendUrl: String) {
                         .put("screen_context", screenContext.take(2500))
                         .put("troll_enabled", trollEnabled)
                         .put("language", "pt-BR")
+                        .put("image_status", "unavailable")
                     imagePath?.let { path ->
                         val imageFile = File(path)
                         if (imageFile.isFile && imageFile.length() in 1L..3_500_000L) {
                             payload.put("image_base64", Base64.encodeToString(imageFile.readBytes(), Base64.NO_WRAP))
                             payload.put("mime_type", "image/jpeg")
+                            payload.put("image_status", "attached")
+                            android.util.Log.d("ClaudGameVision", "Enviando imagem real à IA: ${imageFile.length()} bytes")
                         }
                     }
                     connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
