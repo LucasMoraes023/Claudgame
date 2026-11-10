@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.IBinder
@@ -109,15 +110,23 @@ class ClaudGameOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
-            startForeground(
-                NOTIFICATION_ID,
-                Notification.Builder(this, CHANNEL)
-                    .setContentTitle("ClaudGame")
-                    .setContentText("Companheiro IA ativo")
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setOngoing(true)
-                    .build()
-            )
+            val notification = Notification.Builder(this, CHANNEL)
+                .setContentTitle("ClaudGame")
+                .setContentText("Companheiro IA ativo")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setOngoing(true)
+                .build()
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                // O serviço é iniciado pela Activity ainda visível e com RECORD_AUDIO concedido.
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: trollEnabled
             if (panel == null) showOverlay()
         } catch (error: Exception) {
@@ -324,9 +333,9 @@ class ClaudGameOverlayService : Service() {
             if (serviceDestroyed) return
             recognitionInProgress = false
             if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
+            android.util.Log.e("ClaudGameVoice", "SpeechRecognizer onError code=$error")
             if ((error == SpeechRecognizer.ERROR_NO_MATCH ||
-                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                    error == SpeechRecognizer.ERROR_CLIENT) && recognitionRetryCount < 1) {
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && recognitionRetryCount < 1) {
                 recognitionRetryCount++
                 if (::statusText.isInitialized) statusText.text = "● Não consegui captar. Tentando novamente..."
                 recreateSpeechRecognizer()
@@ -343,7 +352,8 @@ class ClaudGameOverlayService : Service() {
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Sem conexão para reconhecimento de voz"
                     SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone • verifique se outro app está usando o áudio"
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconhecimento ocupado • tente novamente"
-                    else -> "Não consegui ouvir • tente novamente"
+                    SpeechRecognizer.ERROR_CLIENT -> "Falha interna do serviço de voz (erro $error)"
+                    else -> "Não consegui ouvir • erro $error"
                 }
             }
         }
