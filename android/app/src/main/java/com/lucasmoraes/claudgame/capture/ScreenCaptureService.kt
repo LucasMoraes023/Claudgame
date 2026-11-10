@@ -42,6 +42,11 @@ class ScreenCaptureService : Service() {
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
+            sendBroadcast(Intent(ACTION_SCREEN_CONTEXT).apply {
+                setPackage(packageName)
+                putExtra("context", "")
+                putExtra("frame_status", "unavailable")
+            })
             releaseCapture()
             stopSelf()
         }
