@@ -21,7 +21,18 @@ class ScreenContextAnalyzer(
         busy = true
         try {
             val (jpeg, frameStatus) = imageToJpeg(image)
-            val input = InputImage.fromMediaImage(image, rotationDegrees)
+            // Esta ImageReader entrega RGBA_8888. ML Kit fromMediaImage só aceita
+            // formatos YUV compatíveis; passar RGBA aqui causa exceção e descartava
+            // até o JPEG que já havia sido convertido corretamente.
+            if (jpeg == null) {
+                safeNotify(lastContext, null, frameStatus)
+                safelyClose(image)
+                busy = false
+                return
+            }
+            val input = InputImage.fromByteArray(
+                jpeg, 0, jpeg.size, rotationDegrees, android.graphics.ImageFormat.JPEG
+            )
             recognizer.process(input)
                 .addOnSuccessListener { result ->
                     try {
