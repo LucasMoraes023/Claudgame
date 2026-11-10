@@ -47,6 +47,7 @@ class ClaudGameOverlayService : Service() {
     private var trollEnabled = false
     private var latestScreenContext = ""
     private var latestScreenFramePath: String? = null
+    private var latestScreenFrameAt = 0L
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
     private val aiClient by lazy { GameAiClient(BuildConfig.AI_BACKEND_URL) }
@@ -59,9 +60,11 @@ class ClaudGameOverlayService : Service() {
             val frameStatus = intent?.getStringExtra("frame_status").orEmpty()
             if (!framePath.isNullOrBlank() && java.io.File(framePath).isFile) {
                 latestScreenFramePath = framePath
+                latestScreenFrameAt = System.currentTimeMillis()
                 android.util.Log.d("ClaudGameVision", "Frame JPEG válido recebido: $framePath")
             } else if (frameStatus == "black" || frameStatus == "unavailable") {
                 latestScreenFramePath = null
+                latestScreenFrameAt = 0L
                 android.util.Log.w("ClaudGameVision", "Frame atual indisponível: $frameStatus")
             }
             if (value.isNotBlank()) latestScreenContext = value
@@ -357,7 +360,10 @@ class ClaudGameOverlayService : Service() {
             }
             if (::statusText.isInitialized) statusText.text = "Você: $text"
             statusText.text = "● Consultando a inteligência artificial..."
-            aiClient.ask(text, latestScreenContext, trollEnabled, latestScreenFramePath) { result ->
+            val freshFramePath = latestScreenFramePath?.takeIf {
+                System.currentTimeMillis() - latestScreenFrameAt <= 5000L && java.io.File(it).isFile
+            }
+            aiClient.ask(text, latestScreenContext, trollEnabled, freshFramePath) { result ->
                 if (serviceDestroyed) return@ask
                 result.onSuccess { response -> speak(response) }
                     .onFailure { error ->
