@@ -38,7 +38,7 @@ jobs:
 
       - name: Build debug APK
         env:
-          CLAUDGAME_AI_BACKEND_URL: ${{ secrets.CLAUDGAME_AI_BACKEND_URL }}
+          CLAUDGAME_AI_BACKEND_URL: ${{ secrets.CLAUDGAME_AI_BACKEND_URL || 'https://wandering-haze-ce04.lucasmoraes-m2.workers.dev' }}
         run: gradle assembleDebug --stacktrace "-PclaudgameAiBackendUrl=$CLAUDGAME_AI_BACKEND_URL"
 
       - uses: actions/upload-artifact@v4
