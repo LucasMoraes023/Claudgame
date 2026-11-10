@@ -89,7 +89,7 @@ class ScreenContextAnalyzer(
             val average = luminanceTotal.toDouble() / total
             val visibleRatio = nonDark.toDouble() / total
             if (average < 2.0 && visibleRatio < 0.001) {
-                Log.w("ClaudGameVision", "MediaProjection entregou frame preto (\${image.width}x\${image.height})")
+                Log.w("ClaudGameVision", "MediaProjection entregou frame preto (" + image.width + "x" + image.height + ")")
                 return Pair(null, "black")
             }
 
