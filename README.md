@@ -26,8 +26,11 @@ O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto 
 - Fluxo de autorização MediaProjection.
 - Serviço foreground para captura.
 - Aquisição de frames com ImageReader.
-- TTS inicial em português.
+- TTS nativo Android em português brasileiro, com preferência por voz masculina de melhor qualidade instalada.
 - Modo Trolagem como configuração local.
+- Captura JPEG compactada do frame atual para análise multimodal quando o jogador pergunta.
+- Cliente Android assíncrono para o proxy seguro Gemini (sem chave de API no APK).
+- Worker Cloudflare em `cloudflare-worker/` para manter a chave Gemini no servidor.
 - GitHub Actions para gerar APK debug.
 
 ## Arquitetura planejada
@@ -64,9 +67,9 @@ O ClaudGame poderá, conforme suporte do aparelho/versão do Android, organizar 
 2. Overlay flutuante real com estado da IA.
 3. Seleção inteligente de frames e redução de consumo.
 4. OCR/visão e eventos de gameplay.
-5. Backend de IA com configuração segura.
-6. Reconhecimento de fala + diálogo natural.
-7. Modo Trolagem 0–100 com cooldown e contexto.
+5. Publicar o proxy Gemini de `cloudflare-worker/` e configurar `CLAUDGAME_AI_BACKEND_URL` nos secrets do GitHub Actions.
+6. Conectar e validar a análise multimodal Gemini com OCR + captura de tela.
+7. Reconhecimento de fala + diálogo natural e Modo Trolagem 0–100 com cooldown e contexto.
 8. Histórico de sessões e preferências.
 9. Testes Android e tratamento completo de permissões.
 10. Build release assinada e APK final.
@@ -85,3 +88,9 @@ Tecnologias:
 - Java 17
 - minSdk 26
 - targetSdk 35
+
+## IA online (Gemini)
+
+A integração Android já envia a pergunta, o contexto OCR e o último frame JPEG ao endpoint seguro `/api/game/analyze`. O Worker em `cloudflare-worker/` chama a Gemini Developer API. Para ativar a IA online, siga `cloudflare-worker/README.md`, guarde `GEMINI_API_KEY` como secret no Cloudflare e configure `CLAUDGAME_AI_BACKEND_URL` como secret do GitHub Actions. Sem essa URL o APK compila, mas informa que o servidor de IA ainda não foi configurado.
+
+A voz e o reconhecimento continuam nativos do Android. A seleção de voz prefere uma voz pt-BR masculina quando o mecanismo instalado identifica uma; caso contrário usa a voz brasileira de melhor qualidade disponível.
