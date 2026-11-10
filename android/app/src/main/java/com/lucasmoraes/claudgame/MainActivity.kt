@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjectionConfig
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -176,6 +178,13 @@ class MainActivity : AppCompatActivity() {
         pendingGamePackage = games[position].packageName
 
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        capturePermission.launch(manager.createScreenCaptureIntent())
+        // Android 14+ offers app-window sharing by default. ClaudGame needs the
+        // complete display because the game is launched only after permission.
+        val captureIntent = if (Build.VERSION.SDK_INT >= 34) {
+            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            manager.createScreenCaptureIntent()
+        }
+        capturePermission.launch(captureIntent)
     }
 }
