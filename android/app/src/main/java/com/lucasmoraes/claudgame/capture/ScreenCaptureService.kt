@@ -21,6 +21,7 @@ import android.util.DisplayMetrics
 import android.view.Surface
 import android.view.WindowManager
 import com.lucasmoraes.claudgame.ai.ScreenContextAnalyzer
+import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
 import java.util.Locale
 
 class ScreenCaptureService : Service() {
@@ -66,9 +67,9 @@ class ScreenCaptureService : Service() {
         tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsReady = true
+                val selectedVoice = tts?.let { NativeVoiceConfig.configure(it) }
+                android.util.Log.i("ClaudGameVoice", "Voz Android selecionada: $selectedVoice")
                 val result = tts?.setLanguage(Locale("pt", "BR"))
-                tts?.setSpeechRate(1.0f)
-                tts?.setPitch(1.05f)
 
                 if (result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
