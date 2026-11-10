@@ -23,7 +23,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.lucasmoraes.claudgame.ai.AssistantEngine
+import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
 import java.util.Locale
 import kotlin.math.abs
 
@@ -47,7 +47,6 @@ class ClaudGameOverlayService : Service() {
     private var latestScreenContext = ""
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
-    private val assistant = AssistantEngine()
 
     private val screenContextReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
@@ -83,9 +82,8 @@ class ClaudGameOverlayService : Service() {
             tts = TextToSpeech(applicationContext) { status ->
                 if (status == TextToSpeech.SUCCESS && !serviceDestroyed) {
                     ttsReady = true
-                    tts?.setLanguage(Locale("pt", "BR"))
-                    tts?.setSpeechRate(1.0f)
-                    tts?.setPitch(1.05f)
+                    val selectedVoice = NativeVoiceConfig.configure(tts!!)
+                    android.util.Log.i("ClaudGameVoice", "Voz Android selecionada: $selectedVoice")
                 }
             }
         } catch (error: Exception) {
