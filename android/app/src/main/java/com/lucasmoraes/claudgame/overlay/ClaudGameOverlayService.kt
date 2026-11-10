@@ -24,6 +24,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
+import com.lucasmoraes.claudgame.ai.GameAiClient
+import com.lucasmoraes.claudgame.BuildConfig
 import java.util.Locale
 import kotlin.math.abs
 
@@ -334,8 +336,14 @@ class ClaudGameOverlayService : Service() {
                 return
             }
             if (::statusText.isInitialized) statusText.text = "Você: $text"
-            val response = assistant.reply(text, trollEnabled, latestScreenContext)
-            speak(response)
+            statusText.text = "● Consultando a inteligência artificial..."
+            aiClient.ask(text, latestScreenContext, trollEnabled) { result ->
+                if (serviceDestroyed) return@ask
+                result.onSuccess { response -> speak(response) }
+                    .onFailure { error ->
+                        statusText.text = "IA indisponível: ${error.message ?: "tente novamente"}"
+                    }
+            }
         }
 
         override fun onPartialResults(partialResults: android.os.Bundle?) {
