@@ -22,7 +22,6 @@ import android.view.Surface
 import android.view.WindowManager
 import com.lucasmoraes.claudgame.ai.ScreenContextAnalyzer
 import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
-import java.util.Locale
 
 class ScreenCaptureService : Service() {
     companion object {
@@ -75,15 +74,11 @@ class ScreenCaptureService : Service() {
                 ttsReady = true
                 val selectedVoice = tts?.let { NativeVoiceConfig.configure(it) }
                 android.util.Log.i("ClaudGameVoice", "Voz Android selecionada: $selectedVoice")
-                val result = tts?.setLanguage(Locale("pt", "BR"))
-
-                if (result != TextToSpeech.LANG_MISSING_DATA &&
-                    result != TextToSpeech.LANG_NOT_SUPPORTED
-                ) {
-                    mainHandler.postDelayed({
-                        speak("ClaudGame ativado. Bora jogar.", "claudgame-start")
-                    }, 800)
-                }
+                // NativeVoiceConfig já selecionou a voz. Não chamar setLanguage
+                // novamente, pois isso pode substituir a voz masculina escolhida.
+                mainHandler.postDelayed({
+                    speak("ClaudGame ativado. Bora jogar.", "claudgame-start")
+                }, 800)
             }
         }
     }
@@ -172,6 +167,13 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        android.util.Log.i("ClaudGameCapture", "Game Hub removido; encerrando captura e companheiro")
+        stopService(Intent(this, com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService::class.java))
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     private fun speak(text: String, utteranceId: String) {
         if (!ttsReady) return
 
@@ -200,6 +202,7 @@ class ScreenCaptureService : Service() {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        stopService(Intent(this, com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService::class.java))
         super.onDestroy()
     }
 
