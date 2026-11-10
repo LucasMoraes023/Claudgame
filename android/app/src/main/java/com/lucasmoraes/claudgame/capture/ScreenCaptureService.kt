@@ -62,7 +62,7 @@ class ScreenCaptureService : Service() {
                 setPackage(packageName)
                 putExtra("context", context)
                 putExtra("frame_path", framePath)
-                putExtra("frame_status", if (framePath != null) "ok" else frameStatus)
+                putExtra("frame_status", if (framePath != null) "ok" else if (frameStatus == "ok") "unavailable" else frameStatus)
             })
         }
 
