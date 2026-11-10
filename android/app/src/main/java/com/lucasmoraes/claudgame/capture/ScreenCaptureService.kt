@@ -114,8 +114,13 @@ class ScreenCaptureService : Service() {
             @Suppress("DEPRECATION")
             wm.defaultDisplay.getRealMetrics(metrics)
 
-            val width = (metrics.widthPixels / 2).coerceAtLeast(360)
-            val height = (metrics.heightPixels / 2).coerceAtLeast(640)
+            // Preserve the real screen aspect ratio. The old fixed minimum height
+            // distorted landscape games (for example 768x640 instead of 1536x672),
+            // making small HUD/chat text unreadable to ML Kit OCR.
+            val maxDimension = maxOf(metrics.widthPixels, metrics.heightPixels)
+            val scale = minOf(1f, 1920f / maxDimension.toFloat())
+            val width = (metrics.widthPixels * scale).toInt().coerceAtLeast(1)
+            val height = (metrics.heightPixels * scale).toInt().coerceAtLeast(1)
 
             reader = ImageReader.newInstance(
                 width, height, android.graphics.PixelFormat.RGBA_8888, 2
