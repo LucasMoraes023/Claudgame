@@ -112,7 +112,16 @@ class ClaudGameOverlayService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        return START_STICKY
+        // Não ressuscitar a bolha automaticamente depois que o usuário fecha o Game Hub.
+        return START_NOT_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        android.util.Log.i("ClaudGameOverlay", "Game Hub removido; encerrando bolha e captura")
+        stopService(Intent(this, com.lucasmoraes.claudgame.capture.ScreenCaptureService::class.java))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun showOverlay() {
@@ -402,6 +411,9 @@ class ClaudGameOverlayService : Service() {
             }
         }
         panel = null
+        // Captura e bolha são uma única sessão: não deixar a captura continuar
+        // escondida depois que o companheiro for encerrado.
+        stopService(Intent(this, com.lucasmoraes.claudgame.capture.ScreenCaptureService::class.java))
         super.onDestroy()
     }
 
