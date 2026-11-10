@@ -47,12 +47,16 @@ export default {
     }
 
     try {
+      // Gemini 2.5 está com acesso restrito a projetos que já o utilizavam.
+      // Flash-Lite 3.5 é o modelo multimodal recomendado para novos projetos.
       const upstream = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
-          encodeURIComponent(env.GEMINI_API_KEY),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": env.GEMINI_API_KEY
+          },
           body: JSON.stringify({
             contents: [{ role: "user", parts }],
             generationConfig: { temperature: 0.65, maxOutputTokens: 220 }
@@ -62,7 +66,11 @@ export default {
       const data = await upstream.json();
       if (!upstream.ok) {
         console.error("Gemini error", upstream.status, JSON.stringify(data).slice(0, 1000));
-        return json({ detail: "A IA não conseguiu responder agora (HTTP " + upstream.status + ")" }, 502);
+        const providerMessage = data.error?.message;
+        return json({
+          detail: "Falha no provedor Gemini (HTTP " + upstream.status + ")" +
+            (providerMessage ? ": " + String(providerMessage).slice(0, 300) : "")
+        }, 502);
       }
       const reply = (data.candidates?.[0]?.content?.parts || [])
         .map(part => part.text || "")
