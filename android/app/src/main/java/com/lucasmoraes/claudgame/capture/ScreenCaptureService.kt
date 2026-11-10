@@ -9,19 +9,16 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.AudioManager
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
 import android.view.Surface
 import android.view.WindowManager
 import com.lucasmoraes.claudgame.ai.ScreenContextAnalyzer
-import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
 
 class ScreenCaptureService : Service() {
     companion object {
@@ -36,8 +33,6 @@ class ScreenCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var reader: ImageReader? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var trollEnabled = false
     private var analyzer: ScreenContextAnalyzer? = null
@@ -69,18 +64,7 @@ class ScreenCaptureService : Service() {
             )
         }
 
-        tts = TextToSpeech(applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                ttsReady = true
-                val selectedVoice = tts?.let { NativeVoiceConfig.configure(it) }
-                android.util.Log.i("ClaudGameVoice", "Voz Android selecionada: $selectedVoice")
-                // NativeVoiceConfig já selecionou a voz. Não chamar setLanguage
-                // novamente, pois isso pode substituir a voz masculina escolhida.
-                mainHandler.postDelayed({
-                    speak("ClaudGame ativado. Bora jogar.", "claudgame-start")
-                }, 800)
-            }
-        }
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -174,14 +158,6 @@ class ScreenCaptureService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
-    private fun speak(text: String, utteranceId: String) {
-        if (!ttsReady) return
-
-        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
-
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-    }
 
     private fun releaseCapture() {
         virtualDisplay?.release()
@@ -198,10 +174,6 @@ class ScreenCaptureService : Service() {
         analyzer?.close()
         analyzer = null
         releaseCapture()
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
-        ttsReady = false
         stopService(Intent(this, com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService::class.java))
         super.onDestroy()
     }
