@@ -4,6 +4,7 @@ on:
     branches: [ main ]
     paths: ["android/**", ".github/workflows/android-apk.yml"]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,15 +13,31 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
+
+      - uses: actions/cache@v4
+        id: signing-cache
+        with:
+          path: android/claudgame-debug.keystore
+          key: claudgame-debug-signing-v1
+
+      - name: Create stable debug signing key when cache is empty
+        if: steps.signing-cache.outputs.cache-hit != 'true'
+        working-directory: android
+        run: |
+          keytool -genkeypair -v             -keystore claudgame-debug.keystore             -alias claudgame             -keyalg RSA             -keysize 2048             -validity 10000             -storepass claudgame123             -keypass claudgame123             -dname "CN=ClaudGame, OU=ClaudGame, O=ClaudGame, L=Capanema, ST=PA, C=BR"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
       - run: gradle assembleDebug --stacktrace
+
       - uses: actions/upload-artifact@v4
         with:
           name: ClaudGame-debug
