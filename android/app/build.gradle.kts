@@ -4,6 +4,15 @@ plugins {
 }
 android {
     namespace = "com.lucasmoraes.claudgame"
+
+    signingConfigs {
+        create("claudGameDebug") {
+            storeFile = file("../claudgame-debug.keystore")
+            storePassword = "claudgame123"
+            keyAlias = "claudgame"
+            keyPassword = "claudgame123"
+        }
+    }
     compileSdk = 35
     defaultConfig {
         applicationId = "com.lucasmoraes.claudgame"
@@ -13,6 +22,9 @@ android {
         versionName = "0.2.0"
     }
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("claudGameDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
