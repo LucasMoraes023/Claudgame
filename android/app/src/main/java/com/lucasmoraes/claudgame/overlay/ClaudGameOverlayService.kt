@@ -46,6 +46,7 @@ class ClaudGameOverlayService : Service() {
     private var receiverRegistered = false
     private var trollEnabled = false
     private var latestScreenContext = ""
+    private var latestScreenFramePath: String? = null
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
     private val aiClient by lazy { GameAiClient(BuildConfig.AI_BACKEND_URL) }
@@ -337,7 +338,7 @@ class ClaudGameOverlayService : Service() {
             }
             if (::statusText.isInitialized) statusText.text = "Você: $text"
             statusText.text = "● Consultando a inteligência artificial..."
-            aiClient.ask(text, latestScreenContext, trollEnabled) { result ->
+            aiClient.ask(text, latestScreenContext, trollEnabled, latestScreenFramePath) { result ->
                 if (serviceDestroyed) return@ask
                 result.onSuccess { response -> speak(response) }
                     .onFailure { error ->
