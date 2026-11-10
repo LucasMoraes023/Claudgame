@@ -43,6 +43,7 @@ class ClaudGameOverlayService : Service() {
     private var ttsReady = false
     private var recognitionInProgress = false
     private var recognitionRetryCount = 0
+    private var triedOnDeviceFallback = false
     private var serviceDestroyed = false
     private var receiverRegistered = false
     private var trollEnabled = false
@@ -263,6 +264,7 @@ class ClaudGameOverlayService : Service() {
         }
 
         recognitionRetryCount = 0
+        triedOnDeviceFallback = false
         beginRecognition()
     }
 
@@ -270,7 +272,15 @@ class ClaudGameOverlayService : Service() {
         if (serviceDestroyed) return
         try {
             recreateSpeechRecognizer()
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer = if (
+                triedOnDeviceFallback &&
+                android.os.Build.VERSION.SDK_INT >= 31 &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            ) {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            } else {
+                SpeechRecognizer.createSpeechRecognizer(this)
+            }
             speechRecognizer?.setRecognitionListener(listener)
 
             recognitionInProgress = true
@@ -283,7 +293,7 @@ class ClaudGameOverlayService : Service() {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, triedOnDeviceFallback)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2800L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
@@ -334,6 +344,20 @@ class ClaudGameOverlayService : Service() {
             recognitionInProgress = false
             if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
             android.util.Log.e("ClaudGameVoice", "SpeechRecognizer onError code=$error")
+            if (
+                error == SpeechRecognizer.ERROR_SERVER &&
+                !triedOnDeviceFallback &&
+                android.os.Build.VERSION.SDK_INT >= 31 &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            ) {
+                triedOnDeviceFallback = true
+                if (::statusText.isInitialized) statusText.text = "● Serviço online falhou; tentando reconhecimento offline..."
+                recreateSpeechRecognizer()
+                android.os.Handler(mainLooper).postDelayed({
+                    if (!serviceDestroyed) beginRecognition()
+                }, 400L)
+                return
+            }
             if ((error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && recognitionRetryCount < 1) {
                 recognitionRetryCount++
