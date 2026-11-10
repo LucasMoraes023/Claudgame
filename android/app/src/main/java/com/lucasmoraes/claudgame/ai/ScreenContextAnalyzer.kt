@@ -7,46 +7,58 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 /**
- * IA visual local e gratuita.
- *
- * Não envia a tela para a internet: o reconhecimento de texto acontece no aparelho.
- * O resultado vira contexto para o AssistantEngine.
+ * Reconhecimento local e gratuito de texto na tela.
+ * Toda falha de OCR é isolada para não derrubar o serviço de captura.
  */
 class ScreenContextAnalyzer(
     private val onContextReady: (String) -> Unit
 ) {
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    private var busy = false
+    @Volatile private var busy = false
+    @Volatile private var closed = false
     private var lastContext = ""
 
     fun analyze(image: Image, rotationDegrees: Int) {
-        if (busy) {
-            image.close()
+        if (closed || busy) {
+            safelyClose(image)
             return
         }
 
         busy = true
-        val input = InputImage.fromMediaImage(image, rotationDegrees)
-
-        recognizer.process(input)
-            .addOnSuccessListener { result ->
-                val text = result.text
-                    .replace("\\s+".toRegex(), " ")
-                    .trim()
-
-                val context = buildContext(text)
-                if (context.isNotBlank() && context != lastContext) {
-                    lastContext = context
-                    onContextReady(context)
+        try {
+            val input = InputImage.fromMediaImage(image, rotationDegrees)
+            recognizer.process(input)
+                .addOnSuccessListener { result ->
+                    try {
+                        if (closed) return@addOnSuccessListener
+                        val text = result.text
+                            .replace("\\s+".toRegex(), " ")
+                            .trim()
+                        val context = buildContext(text)
+                        if (context.isNotBlank() && context != lastContext) {
+                            lastContext = context
+                            try {
+                                onContextReady(context)
+                            } catch (error: Exception) {
+                                Log.w("ClaudGameVision", "Falha ao enviar contexto", error)
+                            }
+                        }
+                    } catch (error: Exception) {
+                        Log.w("ClaudGameVision", "Falha ao interpretar OCR", error)
+                    }
                 }
-            }
-            .addOnFailureListener { error ->
-                Log.d("ClaudGameVision", "OCR indisponível nesta imagem: ${error.message}")
-            }
-            .addOnCompleteListener {
-                image.close()
-                busy = false
-            }
+                .addOnFailureListener { error ->
+                    Log.d("ClaudGameVision", "OCR indisponível nesta imagem", error)
+                }
+                .addOnCompleteListener {
+                    safelyClose(image)
+                    busy = false
+                }
+        } catch (error: Exception) {
+            Log.w("ClaudGameVision", "Falha ao iniciar OCR", error)
+            safelyClose(image)
+            busy = false
+        }
     }
 
     private fun buildContext(text: String): String {
@@ -82,7 +94,19 @@ class ScreenContextAnalyzer(
     private fun containsAny(text: String, vararg terms: String): Boolean =
         terms.any { text.contains(it) }
 
+    private fun safelyClose(image: Image) {
+        try {
+            image.close()
+        } catch (_: Exception) {
+        }
+    }
+
     fun close() {
-        recognizer.close()
+        closed = true
+        try {
+            recognizer.close()
+        } catch (error: Exception) {
+            Log.w("ClaudGameVision", "Falha ao fechar OCR", error)
+        }
     }
 }
