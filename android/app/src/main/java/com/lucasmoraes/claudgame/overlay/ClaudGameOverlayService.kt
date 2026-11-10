@@ -66,7 +66,7 @@ class ClaudGameOverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val filter = IntentFilter(com.lucasmoraes.claudgame.capture.ScreenCaptureService.ACTION_SCREEN_CONTEXT)
         if (android.os.Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(screenContextReceiver, filter, RECEIVER_NOT_EXPORTED)
+            registerReceiver(screenContextReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(screenContextReceiver, filter)
