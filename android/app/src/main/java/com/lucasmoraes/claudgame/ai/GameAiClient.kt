@@ -47,7 +47,7 @@ class GameAiClient(private val backendUrl: String) {
                         .put("language", "pt-BR")
                     imagePath?.let { path ->
                         val imageFile = File(path)
-                        if (imageFile.isFile && imageFile.length() in 1..3_500_000) {
+                        if (imageFile.isFile && imageFile.length() in 1L..3_500_000L) {
                             payload.put("image_base64", Base64.encodeToString(imageFile.readBytes(), Base64.NO_WRAP))
                             payload.put("mime_type", "image/jpeg")
                         }
