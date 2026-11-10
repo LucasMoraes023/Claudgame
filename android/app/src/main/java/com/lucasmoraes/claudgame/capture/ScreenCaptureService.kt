@@ -33,6 +33,8 @@ class ScreenCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var reader: ImageReader? = null
+    private var densityDpi = 0
+    private var displayWindowManager: WindowManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var trollEnabled = false
     private var analyzer: ScreenContextAnalyzer? = null
@@ -42,6 +44,14 @@ class ScreenCaptureService : Service() {
         override fun onStop() {
             releaseCapture()
             stopSelf()
+        }
+
+        // O jogo normalmente gira para paisagem depois que a permissão é concedida.
+        // Redimensionar a projeção evita manter um buffer em retrato para um jogo landscape.
+        override fun onCapturedContentResize(width: Int, height: Int) {
+            if (width > 0 && height > 0 && virtualDisplay != null) {
+                resizeCaptureSurface(width, height)
+            }
         }
     }
 
@@ -99,45 +109,22 @@ class ScreenCaptureService : Service() {
 
             val metrics = DisplayMetrics()
             val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            displayWindowManager = wm
             @Suppress("DEPRECATION")
             wm.defaultDisplay.getRealMetrics(metrics)
+            densityDpi = metrics.densityDpi
 
-            // Preserve the real screen aspect ratio. The old fixed minimum height
-            // distorted landscape games (for example 768x640 instead of 1536x672),
-            // making small HUD/chat text unreadable to ML Kit OCR.
             val maxDimension = maxOf(metrics.widthPixels, metrics.heightPixels)
             val scale = minOf(1f, 1920f / maxDimension.toFloat())
             val width = (metrics.widthPixels * scale).toInt().coerceAtLeast(1)
             val height = (metrics.heightPixels * scale).toInt().coerceAtLeast(1)
 
-            reader = ImageReader.newInstance(
-                width, height, android.graphics.PixelFormat.RGBA_8888, 2
-            )
-            reader?.setOnImageAvailableListener({ imageReader ->
-                val now = System.currentTimeMillis()
-                if (now - lastAnalysisAt < 1800L) {
-                    imageReader.acquireLatestImage()?.close()
-                    return@setOnImageAvailableListener
-                }
-
-                val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
-                lastAnalysisAt = now
-
-                val rotation = when (wm.defaultDisplay.rotation) {
-                    Surface.ROTATION_90 -> 90
-                    Surface.ROTATION_180 -> 180
-                    Surface.ROTATION_270 -> 270
-                    else -> 0
-                }
-
-                analyzer?.analyze(image, rotation)
-            }, mainHandler)
-
+            reader = createImageReader(width, height)
             virtualDisplay = projection?.createVirtualDisplay(
                 "ClaudGameCapture",
                 width,
                 height,
-                metrics.densityDpi,
+                densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 reader?.surface,
                 null,
@@ -161,11 +148,61 @@ class ScreenCaptureService : Service() {
     }
 
 
+    private fun createImageReader(width: Int, height: Int): ImageReader {
+        return ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 2).apply {
+            setOnImageAvailableListener({ source -> handleImageAvailable(source) }, mainHandler)
+        }
+    }
+
+    private fun handleImageAvailable(imageReader: ImageReader) {
+        try {
+            val now = System.currentTimeMillis()
+            if (now - lastAnalysisAt < 1800L) {
+                imageReader.acquireLatestImage()?.close()
+                return
+            }
+            val image = imageReader.acquireLatestImage() ?: return
+            lastAnalysisAt = now
+            val rotation = when (displayWindowManager?.defaultDisplay?.rotation) {
+                Surface.ROTATION_90 -> 90
+                Surface.ROTATION_180 -> 180
+                Surface.ROTATION_270 -> 270
+                else -> 0
+            }
+            analyzer?.analyze(image, rotation) ?: image.close()
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameCapture", "Falha ao adquirir frame do ImageReader", error)
+        }
+    }
+
+    private fun resizeCaptureSurface(sourceWidth: Int, sourceHeight: Int) {
+        val maxDimension = maxOf(sourceWidth, sourceHeight)
+        val scale = minOf(1f, 1920f / maxDimension.toFloat())
+        val width = (sourceWidth * scale).toInt().coerceAtLeast(1)
+        val height = (sourceHeight * scale).toInt().coerceAtLeast(1)
+        if (reader?.width == width && reader?.height == height) return
+
+        try {
+            val newReader = createImageReader(width, height)
+            val oldReader = reader
+            virtualDisplay?.resize(width, height, densityDpi)
+            virtualDisplay?.setSurface(newReader.surface)
+            reader = newReader
+            oldReader?.setOnImageAvailableListener(null, null)
+            oldReader?.close()
+            android.util.Log.i("ClaudGameCapture", "Captura redimensionada para ${width}x${height}")
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameCapture", "Falha ao redimensionar captura", error)
+        }
+    }
+
     private fun releaseCapture() {
         virtualDisplay?.release()
         virtualDisplay = null
+        reader?.setOnImageAvailableListener(null, null)
         reader?.close()
         reader = null
+        displayWindowManager = null
         projection?.unregisterCallback(projectionCallback)
         projection?.stop()
         projection = null
