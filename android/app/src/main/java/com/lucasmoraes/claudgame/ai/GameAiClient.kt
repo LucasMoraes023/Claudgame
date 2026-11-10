@@ -2,6 +2,8 @@ package com.lucasmoraes.claudgame.ai
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
+import java.io.File
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -21,6 +23,7 @@ class GameAiClient(private val backendUrl: String) {
         message: String,
         screenContext: String,
         trollEnabled: Boolean,
+        imagePath: String?,
         callback: (Result<String>) -> Unit
     ) {
         executor.execute {
@@ -42,6 +45,13 @@ class GameAiClient(private val backendUrl: String) {
                         .put("screen_context", screenContext.take(2500))
                         .put("troll_enabled", trollEnabled)
                         .put("language", "pt-BR")
+                    imagePath?.let { path ->
+                        val imageFile = File(path)
+                        if (imageFile.isFile && imageFile.length() in 1..3_500_000) {
+                            payload.put("image_base64", Base64.encodeToString(imageFile.readBytes(), Base64.NO_WRAP))
+                            payload.put("mime_type", "image/jpeg")
+                        }
+                    }
                     connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                     val status = connection.responseCode
                     val stream = if (status in 200..299) connection.inputStream else connection.errorStream
