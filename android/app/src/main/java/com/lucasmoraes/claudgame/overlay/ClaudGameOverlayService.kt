@@ -42,6 +42,7 @@ class ClaudGameOverlayService : Service() {
     private var recognitionInProgress = false
     private var recognitionRetryCount = 0
     private var serviceDestroyed = false
+    private var receiverRegistered = false
     private var trollEnabled = false
     private var latestScreenContext = ""
     private lateinit var statusText: TextView
@@ -50,6 +51,7 @@ class ClaudGameOverlayService : Service() {
 
     private val screenContextReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (serviceDestroyed || !::statusText.isInitialized) return
             val value = intent?.getStringExtra("context").orEmpty()
             if (value.isNotBlank()) {
                 latestScreenContext = value
@@ -65,36 +67,50 @@ class ClaudGameOverlayService : Service() {
         createChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val filter = IntentFilter(com.lucasmoraes.claudgame.capture.ScreenCaptureService.ACTION_SCREEN_CONTEXT)
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(screenContextReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(screenContextReceiver, filter)
-        }
-
-        tts = TextToSpeech(applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                ttsReady = true
-                tts?.setLanguage(Locale("pt", "BR"))
-                tts?.setSpeechRate(1.0f)
-                tts?.setPitch(1.05f)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(screenContextReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(screenContextReceiver, filter)
             }
+            receiverRegistered = true
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Não foi possível registrar receptor", error)
         }
 
+        try {
+            tts = TextToSpeech(applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS && !serviceDestroyed) {
+                    ttsReady = true
+                    tts?.setLanguage(Locale("pt", "BR"))
+                    tts?.setSpeechRate(1.0f)
+                    tts?.setPitch(1.05f)
+                }
+            }
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Falha ao inicializar voz", error)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(
-            NOTIFICATION_ID,
-            Notification.Builder(this, CHANNEL)
-                .setContentTitle("ClaudGame")
-                .setContentText("Companheiro IA ativo")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setOngoing(true)
-                .build()
-        )
-        trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: trollEnabled
-        if (panel == null) showOverlay()
+        try {
+            startForeground(
+                NOTIFICATION_ID,
+                Notification.Builder(this, CHANNEL)
+                    .setContentTitle("ClaudGame")
+                    .setContentText("Companheiro IA ativo")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setOngoing(true)
+                    .build()
+            )
+            trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: trollEnabled
+            if (panel == null) showOverlay()
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Falha ao iniciar companheiro", error)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -167,8 +183,8 @@ class ClaudGameOverlayService : Service() {
         try {
             windowManager.addView(root, params)
             panel = root
-        } catch (e: Exception) {
-            statusText.text = "Sobreposição não disponível"
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Falha ao exibir sobreposição", error)
             panel = null
         }
     }
@@ -186,8 +202,12 @@ class ClaudGameOverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     if (abs(event.rawX - downX) > 4 || abs(event.rawY - downY) > 4) {
                         params.x = startX + (downX - event.rawX).toInt()
-                        params.y = startY + (event.rawY - downY).toInt()
-                        windowManager.updateViewLayout(root, params)
+                        params.y = startY + (downY - event.rawY).toInt()
+                        try {
+                            windowManager.updateViewLayout(root, params)
+                        } catch (error: Exception) {
+                            android.util.Log.w("ClaudGameOverlay", "Falha ao mover painel", error)
+                        }
                     }
                     true
                 }
@@ -215,9 +235,8 @@ class ClaudGameOverlayService : Service() {
     }
 
     private fun beginRecognition() {
+        if (serviceDestroyed) return
         try {
-            // Recria o reconhecedor a cada sessão. Isso evita que uma sessão
-            // encerrada pelo serviço de voz do Android fique presa/sem áudio.
             recreateSpeechRecognizer()
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer?.setRecognitionListener(listener)
@@ -233,15 +252,14 @@ class ClaudGameOverlayService : Service() {
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
-                // Dá tempo para o usuário começar e terminar uma frase,
-                // algo importante quando o jogo está emitindo áudio ao fundo.
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2800L)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             }
             speechRecognizer?.startListening(intent)
-        } catch (e: Exception) {
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Falha ao iniciar reconhecimento", error)
             recognitionInProgress = false
             statusText.text = "Não foi possível iniciar o microfone"
             talkButton.text = "🎙 FALAR"
@@ -268,71 +286,67 @@ class ClaudGameOverlayService : Service() {
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: android.os.Bundle?) {
-            statusText.text = "● Fale agora..."
+            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Fale agora..."
         }
 
         override fun onBeginningOfSpeech() {
-            statusText.text = "● Ouvindo..."
+            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Ouvindo..."
         }
 
         override fun onEndOfSpeech() {
-            statusText.text = "● Processando..."
+            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Processando..."
         }
 
         override fun onError(error: Int) {
+            if (serviceDestroyed) return
             recognitionInProgress = false
-            talkButton.text = "🎙 FALAR"
-
-            // Alguns serviços de reconhecimento retornam NO_MATCH na primeira
-            // tentativa, especialmente sobre um jogo com áudio. Reiniciamos
-            // uma vez automaticamente para não obrigar o usuário a tocar no
-            // botão novamente.
+            if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
             if ((error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                    error == SpeechRecognizer.ERROR_CLIENT) &&
-                recognitionRetryCount < 1) {
+                    error == SpeechRecognizer.ERROR_CLIENT) && recognitionRetryCount < 1) {
                 recognitionRetryCount++
-                statusText.text = "● Não consegui captar. Tentando novamente..."
+                if (::statusText.isInitialized) statusText.text = "● Não consegui captar. Tentando novamente..."
                 recreateSpeechRecognizer()
                 android.os.Handler(mainLooper).postDelayed({
                     if (!serviceDestroyed) beginRecognition()
                 }, 350L)
                 return
             }
-
-            statusText.text = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não entendi • fale um pouco mais perto do microfone"
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Sem conexão para reconhecimento de voz"
-                SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone • verifique se outro app está usando o áudio"
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconhecimento ocupado • tente novamente"
-                else -> "Não consegui ouvir • tente novamente"
+            if (::statusText.isInitialized) {
+                statusText.text = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não entendi • fale um pouco mais perto do microfone"
+                    SpeechRecognizer.ERROR_NETWORK,
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Sem conexão para reconhecimento de voz"
+                    SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone • verifique se outro app está usando o áudio"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconhecimento ocupado • tente novamente"
+                    else -> "Não consegui ouvir • tente novamente"
+                }
             }
         }
 
         override fun onResults(results: android.os.Bundle) {
+            if (serviceDestroyed) return
             recognitionInProgress = false
             recognitionRetryCount = 0
-            talkButton.text = "🎙 FALAR"
+            if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
             val text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
             if (text.isBlank()) {
-                statusText.text = "Não entendi • fale novamente"
+                if (::statusText.isInitialized) statusText.text = "Não entendi • fale novamente"
                 return
             }
-            statusText.text = "Você: $text"
+            if (::statusText.isInitialized) statusText.text = "Você: $text"
             val response = assistant.reply(text, trollEnabled, latestScreenContext)
             speak(response)
         }
 
         override fun onPartialResults(partialResults: android.os.Bundle?) {
+            if (serviceDestroyed || !::statusText.isInitialized) return
             val text = partialResults
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
                 .orEmpty()
-            if (text.isNotBlank()) {
-                statusText.text = "● Ouvindo: $text"
-            }
+            if (text.isNotBlank()) statusText.text = "● Ouvindo: $text"
         }
 
         override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
@@ -341,27 +355,43 @@ class ClaudGameOverlayService : Service() {
     }
 
     private fun speak(text: String) {
-        if (!ttsReady) {
-            statusText.text = "Voz ainda inicializando..."
+        if (!ttsReady || serviceDestroyed) {
+            if (::statusText.isInitialized) statusText.text = "Voz ainda inicializando..."
             return
         }
-        statusText.text = "● ClaudGame: $text"
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "claudgame-reply")
+        if (::statusText.isInitialized) statusText.text = "● ClaudGame: $text"
+        try {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "claudgame-reply")
+        } catch (error: Exception) {
+            android.util.Log.e("ClaudGameOverlay", "Falha ao falar resposta", error)
+        }
     }
 
     override fun onDestroy() {
         serviceDestroyed = true
+        if (receiverRegistered) {
+            try {
+                unregisterReceiver(screenContextReceiver)
+            } catch (_: Exception) {
+            }
+            receiverRegistered = false
+        }
         try {
-            unregisterReceiver(screenContextReceiver)
+            speechRecognizer?.destroy()
         } catch (_: Exception) {
         }
-        speechRecognizer?.destroy()
         speechRecognizer = null
-        tts?.stop()
-        tts?.shutdown()
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (_: Exception) {
+        }
         tts = null
         panel?.let {
-            if (it.isAttachedToWindow) windowManager.removeView(it)
+            try {
+                if (it.isAttachedToWindow) windowManager.removeView(it)
+            } catch (_: Exception) {
+            }
         }
         panel = null
         super.onDestroy()
