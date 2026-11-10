@@ -109,7 +109,9 @@ class ClaudGameOverlayService : Service() {
                 setColor(Color.rgb(82, 64, 150))
                 cornerRadius = 22f
             }
-            setOnClickListener {\n                if (recognitionInProgress) stopListening() else startListening()\n            }
+            setOnClickListener {
+                if (recognitionInProgress) stopListening() else startListening()
+            }
         }
         val troll = TextView(this).apply {
             text = if (trollEnabled) "😈 Trolagem: ATIVA" else "😈 Trolagem: DESLIGADA"
