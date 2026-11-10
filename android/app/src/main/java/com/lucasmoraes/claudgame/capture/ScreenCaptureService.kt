@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -85,15 +86,21 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(
-            NOTIFICATION_ID,
-            Notification.Builder(this, CHANNEL)
-                .setContentTitle("ClaudGame")
-                .setContentText("Assistente de jogo ativo")
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setOngoing(true)
-                .build()
-        )
+        val notification = Notification.Builder(this, CHANNEL)
+            .setContentTitle("ClaudGame")
+            .setContentText("Assistente de jogo ativo")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .build()
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: false
 
@@ -136,7 +143,13 @@ class ScreenCaptureService : Service() {
                 null
             )
         } catch (e: Exception) {
-            // Nunca deixar uma falha de captura derrubar o processo do ClaudGame.
+            android.util.Log.e("ClaudGameCapture", "Falha ao iniciar MediaProjection/ImageReader", e)
+            sendBroadcast(Intent(ACTION_SCREEN_CONTEXT).apply {
+                setPackage(packageName)
+                putExtra("context", "")
+                putExtra("frame_status", "unavailable")
+                putExtra("frame_error", e.javaClass.simpleName + ": " + (e.message ?: "sem detalhes"))
+            })
             releaseCapture()
             stopSelf(startId)
             return START_NOT_STICKY
@@ -177,6 +190,12 @@ class ScreenCaptureService : Service() {
             analyzer?.analyze(image, rotation) ?: image.close()
         } catch (error: Exception) {
             android.util.Log.e("ClaudGameCapture", "Falha ao adquirir frame do ImageReader", error)
+            sendBroadcast(Intent(ACTION_SCREEN_CONTEXT).apply {
+                setPackage(packageName)
+                putExtra("context", "")
+                putExtra("frame_status", "unavailable")
+                putExtra("frame_error", error.javaClass.simpleName + ": " + (error.message ?: "sem detalhes"))
+            })
         }
     }
 
