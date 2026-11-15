@@ -25,6 +25,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
+import com.lucasmoraes.claudgame.capture.CaptureBridge
 import com.lucasmoraes.claudgame.ai.GameAiClient
 import com.lucasmoraes.claudgame.BuildConfig
 import kotlin.math.abs
@@ -45,35 +46,22 @@ class ClaudGameOverlayService : Service() {
     private var recognitionRetryCount = 0
     private var triedOnDeviceFallback = false
     private var serviceDestroyed = false
-    private var receiverRegistered = false
     private var trollEnabled = false
     private var latestScreenContext = ""
-    private var latestScreenFramePath: String? = null
-    private var latestScreenFrameAt = 0L
+    private var latestScreenSnapshot: CaptureBridge.Snapshot? = null
     private lateinit var statusText: TextView
     private lateinit var talkButton: Button
     private val aiClient by lazy { GameAiClient(BuildConfig.AI_BACKEND_URL) }
 
-    private val screenContextReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context?, intent: Intent?) {
-            if (serviceDestroyed || !::statusText.isInitialized) return
-            val value = intent?.getStringExtra("context").orEmpty()
-            val framePath = intent?.getStringExtra("frame_path")
-            val frameStatus = intent?.getStringExtra("frame_status").orEmpty()
-            if (!framePath.isNullOrBlank() && java.io.File(framePath).isFile) {
-                latestScreenFramePath = framePath
-                latestScreenFrameAt = System.currentTimeMillis()
-                android.util.Log.d("ClaudGameVision", "Frame JPEG válido recebido: $framePath")
-            } else if (frameStatus == "black" || frameStatus == "unavailable") {
-                latestScreenFramePath = null
-                latestScreenFrameAt = 0L
-                android.util.Log.w("ClaudGameVision", "Frame atual indisponível: $frameStatus")
-            }
-            if (value.isNotBlank()) latestScreenContext = value
-            if (!recognitionInProgress) statusText.text = when (frameStatus) {
-                "ok" -> "● Imagem da tela recebida • pronto"
-                "black" -> "● Android entregou tela preta • captura bloqueada"
-                "unavailable" -> "● Falha ao converter a captura"
+    private val snapshotListener = CaptureBridge.Listener { snapshot ->
+        latestScreenSnapshot = snapshot
+        latestScreenContext = snapshot.screenContext
+        if (!recognitionInProgress && ::statusText.isInitialized) {
+            statusText.text = when (snapshot.status) {
+                CaptureBridge.STATUS_OK -> "● Imagem da tela recebida • pronto"
+                CaptureBridge.STATUS_BLACK -> "● Android entregou tela preta • captura bloqueada"
+                CaptureBridge.STATUS_UNAVAILABLE -> "● Falha ao converter a captura"
+                CaptureBridge.STATUS_STOPPED -> "● Captura de tela encerrada"
                 else -> "● Aguardando primeira imagem da tela"
             }
         }
@@ -83,18 +71,9 @@ class ClaudGameOverlayService : Service() {
         super.onCreate()
         createChannel()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        val filter = IntentFilter(com.lucasmoraes.claudgame.capture.ScreenCaptureService.ACTION_SCREEN_CONTEXT)
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(screenContextReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(screenContextReceiver, filter)
-            }
-            receiverRegistered = true
-        } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Não foi possível registrar receptor", error)
-        }
+        CaptureBridge.addListener(snapshotListener)
+        latestScreenSnapshot = CaptureBridge.latest
+        latestScreenContext = latestScreenSnapshot?.screenContext.orEmpty()
 
         try {
             tts = TextToSpeech(applicationContext) { status ->
@@ -435,13 +414,8 @@ class ClaudGameOverlayService : Service() {
 
     override fun onDestroy() {
         serviceDestroyed = true
-        if (receiverRegistered) {
-            try {
-                unregisterReceiver(screenContextReceiver)
-            } catch (_: Exception) {
-            }
-            receiverRegistered = false
-        }
+        CaptureBridge.removeListener(snapshotListener)
+        CaptureBridge.sessionActive = false
         try {
             speechRecognizer?.destroy()
         } catch (_: Exception) {
