@@ -3,7 +3,11 @@
     <color name="cg_bg">#090B12</color>
     <color name="cg_panel">#121622</color>
     <color name="cg_accent">#7C5CFF</color>
+    <color name="cg_accent_dark">#6A48F5</color>
     <color name="cg_cyan">#31D7FF</color>
     <color name="cg_text">#F5F7FF</color>
     <color name="cg_muted">#9BA4B8</color>
+    <color name="cg_stroke">#30384E</color>
+    <color name="cg_amber">#FFBE5A</color>
+    <color name="ic_launcher_background">#090B12</color>
 </resources>
