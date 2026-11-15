@@ -6,7 +6,7 @@ package com.lucasmoraes.claudgame.ai
  */
 object ScreenContextBuilder {
     private const val MAX_VISIBLE_TEXT = 220
-    private val whitespace = Regex("\s+")
+    private val whitespace = Regex("\\s+")
 
     fun build(rawText: String): String {
         val text = rawText.replace(whitespace, " ").trim()
