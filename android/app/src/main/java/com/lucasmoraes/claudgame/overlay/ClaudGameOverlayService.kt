@@ -373,10 +373,10 @@ class ClaudGameOverlayService : Service() {
             }
             if (::statusText.isInitialized) statusText.text = "Você: $text"
             statusText.text = "● Consultando a inteligência artificial..."
-            val freshFramePath = latestScreenFramePath?.takeIf {
-                System.currentTimeMillis() - latestScreenFrameAt <= 5000L && java.io.File(it).isFile
-            }
-            aiClient.ask(text, latestScreenContext, trollEnabled, freshFramePath) { result ->
+            val snapshot = latestScreenSnapshot ?: CaptureBridge.latest
+            val jpeg = snapshot?.takeIf { it.status == CaptureBridge.STATUS_OK }?.jpeg
+            val screenContext = snapshot?.screenContext.orEmpty()
+            aiClient.ask(text, screenContext, trollEnabled, jpeg) { result ->
                 if (serviceDestroyed) return@ask
                 result.onSuccess { response -> speak(response) }
                     .onFailure { error ->
