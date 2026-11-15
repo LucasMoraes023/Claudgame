@@ -56,7 +56,7 @@ class AssistantEngine {
                 "Estou ouvindo. Quero ver se essa jogada vai dar bom.",
                 "Beleza. Agora mostra serviço, porque falar é fácil."
             )
-            return trolls[kotlin.math.abs(userText.hashCode()) % trolls.size]
+            return trolls[(userText.hashCode() and Int.MAX_VALUE) % trolls.size]
         }
 
         return if (screenContext.isBlank()) {
