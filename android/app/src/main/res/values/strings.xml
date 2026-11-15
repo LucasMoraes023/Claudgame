@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClaudGame</string>
+    <string name="hub_title">CLAUDGAME</string>
+    <string name="hub_subtitle">GAME HUB • AI COMPANION</string>
+    <string name="hub_ready">Pronto para jogar</string>
+    <string name="hub_game_section">JOGO DA SESSÃO</string>
+    <string name="hub_play">▶  INICIAR JOGO</string>
+    <string name="hub_ai_start">◉  ATIVAR COMPANHEIRO IA</string>
+    <string name="hub_ai_stop">■  ENCERRAR COMPANHEIRO IA</string>
+    <string name="hub_troll_off">😈  MODO TROLAGEM: DESLIGADO</string>
+    <string name="hub_troll_on">😈  MODO TROLAGEM: ATIVADO</string>
+    <string name="hub_info">A captura de tela e o assistente só são ativados após sua autorização. O áudio usa o TTS nativo do Android.</string>
+    <string name="hub_spinner_label">Jogo da sessão</string>
+</resources>
