@@ -40,7 +40,7 @@ import com.lucasmoraes.claudgame.companion.ZuleideBrain
 import kotlin.math.abs
 
 /**
- * Painel flutuante da Zuleide: uma pílula pequena (bolinha de estado, nome e três botões) que fica sobre o jogo.
+ * Painel flutuante da ZAYRO: uma pílula pequena (bolinha de estado, nome e três botões) que fica sobre o jogo.
  * Não mostra o texto do que é falado. Toda a conversa acontece por voz, via [ZuleideBrain]:
  *  - toque no nome = "falar agora" (interrompe a fala e escuta);  arrastar = mover;
  *  - 🎙 liga/desliga a escuta automática (🔇 = mic mudo);  😈 liga/desliga o modo zueira;  ✕ encerra.
@@ -149,7 +149,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
         }
     }
 
-    /** Encerra a sessão inteira (Zuleide + painel + captura). */
+    /** Encerra a sessão inteira (ZAYRO + painel + captura). */
     private fun stopSession() {
         CaptureBridge.sessionActive = false
         stopService(Intent(this, ScreenCaptureService::class.java))
