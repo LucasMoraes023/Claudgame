@@ -93,9 +93,9 @@ test("turno com áudio + tela: monta o pedido certo e repassa o streaming em eve
     assert.ok(parts[0].text.includes("Jogador: oi") && parts[0].text.includes("Zuleide: e aí!"));
     assert.ok(parts[0].text.includes("Menu"));
     assert.deepEqual(parts.slice(1).map(p => p.inline_data.mime_type), ["image/jpeg", "audio/wav"]);
-    assert.ok(sent.system_instruction.parts[0].text.includes("MODO TREINADORA"));
+    assert.ok(sent.system_instruction.parts[0].text.includes("MODO PARCEIRA ANALISTA"));
     assert.ok(sent.system_instruction.parts[0].text.includes("ANÁLISE PROFUNDA DA PARTIDA"));
-    assert.ok(sent.system_instruction.parts[0].text.includes("PROTOCOLO DE ASSISTÊNCIA TÁTICA"));
+    assert.ok(sent.system_instruction.parts[0].text.includes("CONTE O QUE REALMENTE ESTÁ ACONTECENDO"));
     assert.equal(sent.generationConfig.maxOutputTokens, 420);
   });
 });
@@ -113,7 +113,7 @@ test("modo zueira muda a persona e a temperatura", () => {
 test("comentário espontâneo: prompt de observação, limite menor e dicas de tela parada", () => {
   const built = buildGeminiRequest({ kind: "proactive", image_base64: "SU1H", hints: { idle_seconds: 42, screen_static_seconds: 31 }, troll: true });
   const text = built.body.contents[0].parts[0].text;
-  assert.ok(text.includes("MODO TREINADORA EM TEMPO REAL"));
+  assert.ok(text.includes("MODO OBSERVADORA EM TEMPO REAL"));
   assert.ok(text.includes("há algo novo, importante"));
   assert.ok(text.includes("sem falar há 42 segundos"));
   assert.ok(text.includes("praticamente parada há 31 segundos"));
@@ -187,7 +187,7 @@ test("rota antiga /api/game/analyze continua devolvendo {reply} sem linhas ###",
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { reply: "Fala, campeão!" });
     assert.match(calls[0].url, /:generateContent$/);
-    assert.ok(JSON.parse(calls[0].init.body).system_instruction.parts[0].text.includes("MODO ZUEIRA LIGADO"));
+    assert.ok(JSON.parse(calls[0].init.body).system_instruction.parts[0].text.includes("MODO TROLAGEM OPCIONAL"));
   });
   const empty = await worker.fetch(post("/api/game/analyze", { message: "   " }), ENV);
   assert.equal(empty.status, 400);
