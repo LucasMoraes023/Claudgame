@@ -49,7 +49,7 @@ class ScreenContextBuilderTest {
     fun visibleTextIsTruncated() {
         val long = "a".repeat(1000)
         val context = ScreenContextBuilder.build(long)
-        assertEquals("Texto visível na tela: " + "a".repeat(220), context)
-        assertFalse(context.contains("a".repeat(221)))
+        assertEquals("Texto visível na tela: " + "a".repeat(600), context)
+        assertFalse(context.contains("a".repeat(601)))
     }
 }
