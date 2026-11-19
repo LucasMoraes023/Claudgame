@@ -3,8 +3,8 @@ package com.lucasmoraes.claudgame.companion
 /**
  * Decide QUANDO a Zuleide comenta por conta própria. Lógica pura e testável.
  *
- * Modo normal: uma orientação tática a cada ~12–20 s, quando houver contexto útil.
- * Modo zueira: a cada ~9–19 s e, se a tela ficar parada, ainda cobra o jogador de tempos em tempos.
+ * Modo normal: análise a cada ~8–14 s, antecipada quando a tela muda.
+ * Modo zueira: análise a cada ~8–16 s, sem repetir observações em tela parada.
  */
 object ProactivePlanner {
     data class Input(
@@ -27,8 +27,6 @@ object ProactivePlanner {
 
     private const val MIN_GAP_NORMAL_MS = 8_000L
     private const val MIN_GAP_TROLL_MS = 6_000L
-    private const val STATIC_TAUNT_AFTER_MS = 45_000L
-    private const val STATIC_TAUNT_GAP_MS = 30_000L
 
     fun minGapMs(troll: Boolean): Long = if (troll) MIN_GAP_TROLL_MS else MIN_GAP_NORMAL_MS
 
@@ -51,9 +49,8 @@ object ProactivePlanner {
         if (gap < minGap) return Decision.Wait("fala recente", minGap - gap)
 
         val staticScreen = input.screenStaticMs >= 12_000
-        if (staticScreen && input.commentedOnThisScreen) {
-            val canTaunt = input.troll && input.screenStaticMs >= STATIC_TAUNT_AFTER_MS && gap >= STATIC_TAUNT_GAP_MS
-            if (!canTaunt) return Decision.Wait("tela parada, já comentei", if (input.troll) 10_000 else 20_000)
+        if (staticScreen && input.commentedOnThisScreen && gap < 18_000L) {
+            return Decision.Wait("evitando repetição em tela estática", 18_000L - gap)
         }
         return Decision.Fire
     }
