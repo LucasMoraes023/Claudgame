@@ -50,33 +50,33 @@ class ProactivePlannerTest {
     fun keepsAMinimumGapAfterAnySpeech() {
         val normal = ProactivePlanner.decide(ready.copy(lastActivityMs = 95_000))
         assertEquals("fala recente", waitReason(normal))
-        assertEquals(5_000L, (normal as Decision.Wait).retryInMs) // 10 s - 5 s
+        assertEquals(3_000L, (normal as Decision.Wait).retryInMs) // 8 s - 5 s
         // O modo zueira aceita pausas bem menores.
         assertEquals(Decision.Fire, ProactivePlanner.decide(ready.copy(troll = true, lastActivityMs = 93_000)))
         assertEquals("fala recente", waitReason(ProactivePlanner.decide(ready.copy(troll = true, lastActivityMs = 97_000))))
     }
 
     @Test
-    fun doesNotRepeatCommentsOnAStaticScreen() {
-        val decision = ProactivePlanner.decide(ready.copy(screenStaticMs = 20_000, commentedOnThisScreen = true))
-        assertEquals("tela parada, já comentei", waitReason(decision))
-        // Mas comenta uma tela parada que ainda não foi comentada.
+    fun allowsFreshAnalysisAfterAQuietIntervalOnStaticScreen() {
+        val recent = ProactivePlanner.decide(ready.copy(screenStaticMs = 20_000, commentedOnThisScreen = true, lastActivityMs = 90_000))
+        assertEquals("evitando repetição em tela estática", waitReason(recent))
+        val later = ProactivePlanner.decide(ready.copy(screenStaticMs = 20_000, commentedOnThisScreen = true, lastActivityMs = 80_000))
+        assertEquals(Decision.Fire, later)
         assertEquals(Decision.Fire, ProactivePlanner.decide(ready.copy(screenStaticMs = 20_000, commentedOnThisScreen = false)))
     }
 
     @Test
-    fun trollModeStillPesterThePlayerWhenTheScreenIsStuck() {
-        val stuck = ready.copy(troll = true, screenStaticMs = 60_000, commentedOnThisScreen = true, lastActivityMs = 50_000)
-        assertEquals(Decision.Fire, ProactivePlanner.decide(stuck))
-        // Normal não: continua respeitando "já comentei".
-        assertEquals("tela parada, já comentei", waitReason(ProactivePlanner.decide(stuck.copy(troll = false))))
+    fun bothModesRespectTheNoRepetitionWindow() {
+        val stuck = ready.copy(screenStaticMs = 60_000, commentedOnThisScreen = true, lastActivityMs = 90_000)
+        assertEquals("evitando repetição em tela estática", waitReason(ProactivePlanner.decide(stuck)))
+        assertEquals("evitando repetição em tela estática", waitReason(ProactivePlanner.decide(stuck.copy(troll = true))))
     }
 
     @Test
     fun delaysAreShorterInTrollMode() {
         for (r in listOf(0.0, 0.25, 0.5, 0.99, 1.0)) {
-            assertTrue(ProactivePlanner.nextDelayMs(false, r) in 12_000L..20_000L)
-            assertTrue(ProactivePlanner.nextDelayMs(true, r) in 9_000L..19_000L)
+            assertTrue(ProactivePlanner.nextDelayMs(false, r) in 8_000L..14_000L)
+            assertTrue(ProactivePlanner.nextDelayMs(true, r) in 8_000L..16_000L)
         }
         assertTrue(ProactivePlanner.nextDelayMs(true, 1.0) < ProactivePlanner.nextDelayMs(false, 0.0))
     }
