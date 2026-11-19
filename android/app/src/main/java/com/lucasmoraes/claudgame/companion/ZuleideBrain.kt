@@ -151,6 +151,27 @@ class ZuleideBrain(
         scheduleProactive(minOf(nextProactiveDelay(), 12_000L))
     }
 
+    /** Solicita uma análise tática imediata da captura atual, sem precisar falar no microfone. */
+    fun requestTacticalAdvice() {
+        if (destroyed) return
+        if (serverOutdated) {
+            ui.onFlash("servidor antigo")
+            return
+        }
+        if (isBusy()) {
+            ui.onFlash("aguarde a Zuleide")
+            return
+        }
+        val snapshot = CaptureBridge.latest
+        if (snapshot == null || snapshot.status != CaptureBridge.STATUS_OK || snapshot.jpeg == null) {
+            ui.onFlash("aguardando captura")
+            return
+        }
+        main.removeCallbacks(proactiveRunnable)
+        ui.onFlash("analisando jogada")
+        startTurn(ZuleideClient.Turn.PROACTIVE, null)
+    }
+
     /** Tocar no painel: interrompe a fala e escuta o jogador agora (útil com o jogo muito alto). */
     fun talkNow() {
         if (destroyed) return
@@ -316,10 +337,8 @@ class ZuleideBrain(
         val id = ++turnId
         currentKind = kind
         sentenceCount = 0
-        if (kind == ZuleideClient.Turn.USER) {
-            listener?.setPaused(true)
-            setState(State.THINKING)
-        }
+        if (kind == ZuleideClient.Turn.USER) listener?.setPaused(true)
+        setState(State.THINKING)
         call = client.start(turn, object : ZuleideClient.Listener {
             override fun onSentence(text: String) {
                 if (id == turnId && !destroyed) handleSentence(text)
