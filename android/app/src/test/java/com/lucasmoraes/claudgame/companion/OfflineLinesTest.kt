@@ -51,7 +51,7 @@ class OfflineLinesTest {
 
     @Test
     fun namesTheAssistant() {
-        assertTrue((1..50).map { OfflineLines.greeting(false, seeded) + OfflineLines.greeting(true, seeded) }.any { it.contains("Zuleide") })
+        assertTrue((1..50).map { OfflineLines.greeting(false, seeded) + OfflineLines.greeting(true, seeded) }.any { it.contains(Persona.NAME) })
         assertFalse(Persona.NAME.isBlank())
     }
 }
