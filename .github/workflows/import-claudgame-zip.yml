@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import os, shutil, zipfile
+          import shutil, zipfile
           from pathlib import Path, PurePosixPath
 
           archive = Path("Claudgame-fonte-corrigido.zip")
@@ -46,8 +46,8 @@ jobs:
                   if not parts:
                       continue
                   rel = Path(*parts)
-                  if ".git" in rel.parts or rel.name == "claudgame-debug.keystore":
-                      print(f"Skipped protected file: {item.filename}")
+                  if ".git" in rel.parts or rel.name == "claudgame-debug.keystore" or (rel.parts[:2] == (".github", "workflows")):
+                      print(f"Skipped protected/workflow file: {item.filename}")
                       continue
                   target = temp / rel
                   if item.is_dir():
