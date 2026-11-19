@@ -1,89 +1,143 @@
+import { ASSISTANT_NAME, PROTOCOL_VERSION, SILENCE_TOKEN, buildGeminiRequest, finalizeReply } from "./zuleide.js";
+import { geminiToClientStream, sseEvent } from "./stream.js";
+
+// Gemini 3.5 Flash-Lite: multimodal (texto, imagem e áudio) e com raciocínio mínimo por padrão,
+// ou seja, a menor latência da linha. Dá para trocar sem mexer no código: variável GEMINI_MODEL.
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+const API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models/";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Content-Type": "application/json; charset=utf-8"
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type"
 };
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: corsHeaders });
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" }
+  });
+}
+
+function sseResponse(stream) {
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function silenceStream() {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(sseEvent({ t: SILENCE_TOKEN }));
+      controller.enqueue(sseEvent({ done: true }));
+      controller.close();
+    }
+  });
+}
+
+async function providerFailure(upstream) {
+  let providerMessage = "";
+  try {
+    const data = await upstream.json();
+    providerMessage = data?.error?.message || "";
+    console.error("Gemini error", upstream.status, JSON.stringify(data).slice(0, 1000));
+  } catch {
+    console.error("Gemini error", upstream.status);
+  }
+  const detail = "Falha no provedor Gemini (HTTP " + upstream.status + ")" +
+    (providerMessage ? ": " + String(providerMessage).slice(0, 300) : "");
+  return json({ detail }, upstream.status === 429 ? 429 : 502);
+}
+
+/** Conversa da Zuleide: recebe áudio/texto + tela e responde em streaming (SSE). */
+async function handleTurn(request, env) {
+  let input;
+  try {
+    input = await request.json();
+  } catch {
+    return json({ detail: "JSON inválido" }, 400);
+  }
+  const built = buildGeminiRequest(input);
+  if (built.error) return json({ detail: built.error.detail }, built.error.status);
+
+  // Comentário espontâneo sem imagem não tem o que comentar: nem gasta cota do Gemini.
+  if (built.kind === "proactive" && !(typeof input.image_base64 === "string" && input.image_base64)) {
+    return sseResponse(silenceStream());
+  }
+
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+  let upstream;
+  try {
+    upstream = await fetch(API_ROOT + model + ":streamGenerateContent?alt=sse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify(built.body)
+    });
+  } catch (error) {
+    console.error("AI request failed", error);
+    return json({ detail: "Falha de conexão com o serviço de IA" }, 502);
+  }
+  if (!upstream.ok) return providerFailure(upstream);
+  if (!upstream.body) return json({ detail: "A IA retornou uma resposta vazia" }, 502);
+  return sseResponse(geminiToClientStream(upstream.body));
+}
+
+/** Rota antiga (app 0.9.x): texto -> JSON {reply}. Mantida para não quebrar quem ainda não atualizou o app. */
+async function handleLegacyAnalyze(request, env) {
+  let input;
+  try {
+    input = await request.json();
+  } catch {
+    return json({ detail: "JSON inválido" }, 400);
+  }
+  const built = buildGeminiRequest({ ...input, kind: "user", audio_base64: "" }, { legacy: true });
+  if (built.error) return json({ detail: built.error.detail }, built.error.status);
+
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+  try {
+    const upstream = await fetch(API_ROOT + model + ":generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify(built.body)
+    });
+    if (!upstream.ok) return providerFailure(upstream);
+    const data = await upstream.json();
+    const reply = finalizeReply(
+      (data.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("\n")
+    );
+    if (!reply) return json({ detail: "A IA retornou uma resposta vazia" }, 502);
+    return json({ reply });
+  } catch (error) {
+    console.error("AI request failed", error);
+    return json({ detail: "Falha de conexão com o serviço de IA" }, 502);
+  }
 }
 
 export default {
   async fetch(request, env) {
-    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-    if (request.method !== "POST" || new URL(request.url).pathname !== "/api/game/analyze") {
-      return json({ detail: "Rota não encontrada" }, 404);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+    const { pathname } = new URL(request.url);
+
+    // O app confere esta rota ao iniciar: se ela não existir, o Worker publicado é antigo.
+    if (request.method === "GET" && pathname === "/api/zuleide/version") {
+      return json({
+        version: PROTOCOL_VERSION,
+        assistant: ASSISTANT_NAME,
+        model: env.GEMINI_MODEL || DEFAULT_MODEL,
+        features: ["audio", "stream", "proactive"],
+        configured: Boolean(env.GEMINI_API_KEY)
+      });
     }
+
+    const isTurn = request.method === "POST" && pathname === "/api/zuleide/turn";
+    const isLegacy = request.method === "POST" && pathname === "/api/game/analyze";
+    if (!isTurn && !isLegacy) return json({ detail: "Rota não encontrada" }, 404);
     if (!env.GEMINI_API_KEY) return json({ detail: "Chave Gemini não configurada no servidor" }, 503);
-
-    let input;
-    try {
-      input = await request.json();
-    } catch {
-      return json({ detail: "JSON inválido" }, 400);
-    }
-
-    const message = String(input.message || "").trim().slice(0, 1500);
-    const screenContext = String(input.screen_context || "").trim().slice(0, 2500);
-    if (!message) return json({ detail: "A mensagem está vazia" }, 400);
-
-    const prompt = [
-      "Você é ClaudGame, um companheiro experiente de jogos, que conversa em português brasileiro.",
-      "Responda de forma natural, direta e útil. Não invente elementos que não aparecem no contexto.",
-      "Use o texto reconhecido na tela como evidência, mas deixe claro quando ele não for suficiente.",
-      input.image_status === "attached"
-        ? "Uma imagem real da tela foi anexada. Analise somente o que estiver visível nela e combine com o OCR."
-        : "ATENÇÃO: nenhuma imagem da tela foi recebida nesta pergunta. Não diga que está vendo, olhando ou analisando a imagem. Informe claramente que a captura não chegou e peça para o jogador tentar novamente.",
-      "Dê orientações práticas e curtas que possam ser ouvidas durante uma partida.",
-      input.troll_enabled ? "O modo brincalhão está ativo: use humor leve, sem atrapalhar a orientação." : "Não use provocações.",
-      "Mensagem do jogador: " + message,
-      "Contexto OCR atual da tela: " + (screenContext || "Nenhum texto reconhecido na tela.")
-    ].join("\n\n");
-
-    const parts = [{ text: prompt }];
-    if (typeof input.image_base64 === "string" && input.image_base64.length > 0) {
-      if (input.image_base64.length > 5_500_000) return json({ detail: "Imagem muito grande" }, 413);
-      const mime = ["image/jpeg", "image/png", "image/webp"].includes(input.mime_type)
-        ? input.mime_type : "image/jpeg";
-      parts.push({ inline_data: { mime_type: mime, data: input.image_base64 } });
-    }
-
-    try {
-      // Gemini 2.5 está com acesso restrito a projetos que já o utilizavam.
-      // Flash-Lite 3.5 é o modelo multimodal recomendado para novos projetos.
-      const upstream = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": env.GEMINI_API_KEY
-          },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts }],
-            generationConfig: { temperature: 0.65, maxOutputTokens: 220 }
-          })
-        }
-      );
-      const data = await upstream.json();
-      if (!upstream.ok) {
-        console.error("Gemini error", upstream.status, JSON.stringify(data).slice(0, 1000));
-        const providerMessage = data.error?.message;
-        return json({
-          detail: "Falha no provedor Gemini (HTTP " + upstream.status + ")" +
-            (providerMessage ? ": " + String(providerMessage).slice(0, 300) : "")
-        }, 502);
-      }
-      const reply = (data.candidates?.[0]?.content?.parts || [])
-        .map(part => part.text || "")
-        .join("\n")
-        .trim();
-      if (!reply) return json({ detail: "A IA retornou uma resposta vazia" }, 502);
-      return json({ reply });
-    } catch (error) {
-      console.error("AI request failed", error);
-      return json({ detail: "Falha de conexão com o serviço de IA" }, 502);
-    }
+    return isTurn ? handleTurn(request, env) : handleLegacyAnalyze(request, env);
   }
 };

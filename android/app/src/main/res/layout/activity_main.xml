@@ -99,6 +99,32 @@
             android:textSize="15sp"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/proactiveButton"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/btn_secondary"
+            android:stateListAnimator="@null"
+            android:text="@string/hub_proactive_on"
+            android:textAllCaps="false"
+            android:textColor="@color/cg_cyan"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/voiceButton"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/btn_secondary"
+            android:stateListAnimator="@null"
+            android:text="@string/hub_voice"
+            android:textAllCaps="false"
+            android:textColor="@color/cg_muted"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
         <TextView
             android:id="@+id/info"
             android:layout_width="match_parent"

@@ -1,0 +1,5 @@
+# O wrapper quebra se o gradlew ganhar CRLF; o .bat precisa de CRLF no Windows.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.keystore binary

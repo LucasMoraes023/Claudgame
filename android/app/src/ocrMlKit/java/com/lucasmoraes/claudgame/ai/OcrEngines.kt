@@ -9,6 +9,7 @@ object OcrEngines {
     fun create(): OcrEngine = try {
         MlKitOcrEngine()
     } catch (error: Throwable) {
+        // Se o ML Kit não puder iniciar neste aparelho, o app segue sem OCR local.
         Log.w("ClaudGameVision", "ML Kit indisponível; seguindo sem OCR local", error)
         NoOcrEngine
     }

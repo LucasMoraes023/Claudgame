@@ -1,4 +1,18 @@
+# Python / web
 .env
 *.db
 __pycache__/
 .pytest_cache/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+*.iml
+.idea/
+.DS_Store
+!android/gradle/wrapper/gradle-wrapper.jar

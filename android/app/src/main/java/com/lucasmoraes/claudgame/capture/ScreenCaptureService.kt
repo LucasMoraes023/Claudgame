@@ -34,6 +34,13 @@ import com.lucasmoraes.claudgame.ai.OcrEngines
 import com.lucasmoraes.claudgame.ai.ScreenContextAnalyzer
 import com.lucasmoraes.claudgame.overlay.ClaudGameOverlayService
 
+/**
+ * Captura a tela com MediaProjection (sempre após autorização do jogador) e entrega, no máximo a cada
+ * ~1,8 s, o quadro atual + texto reconhecido ao companheiro flutuante via [CaptureBridge].
+ *
+ * Toda a mecânica de captura (callbacks do ImageReader/MediaProjection, redimensionamento, liberação)
+ * roda numa única thread dedicada; a thread principal só inicia e encerra o serviço.
+ */
 class ScreenCaptureService : Service() {
     companion object {
         const val EXTRA_RESULT_CODE = "result_code"
@@ -50,6 +57,8 @@ class ScreenCaptureService : Service() {
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
+
+    // Estado abaixo: só acessar na thread de captura.
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var reader: ImageReader? = null
@@ -58,9 +67,14 @@ class ScreenCaptureService : Service() {
     private var lastDisplayCheckAt = 0L
     private var densityDpi = 0
 
-    @Volatile private var analyzer: ScreenContextAnalyzer? = null
-    @Volatile private var ocr: OcrEngine? = null
-    @Volatile private var destroyed = false
+    @Volatile
+    private var analyzer: ScreenContextAnalyzer? = null
+
+    @Volatile
+    private var ocr: OcrEngine? = null
+
+    @Volatile
+    private var destroyed = false
 
     private val analysisRunnable = Runnable { analyzeHeldImage() }
 
@@ -72,6 +86,7 @@ class ScreenCaptureService : Service() {
             stopSelf()
         }
 
+        // Android 14+: avisa quando o conteúdo capturado muda de tamanho (ex.: o jogo gira para paisagem).
         override fun onCapturedContentResize(width: Int, height: Int) {
             if (width > 0 && height > 0) resizeCaptureSurface(width, height)
         }
@@ -99,6 +114,7 @@ class ScreenCaptureService : Service() {
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val projectionData = intent?.let { readProjectionData(it) }
 
+        // Todo startForegroundService() exige startForeground() logo em seguida.
         try {
             startInForeground()
         } catch (error: Exception) {
@@ -128,6 +144,7 @@ class ScreenCaptureService : Service() {
 
     private fun failAndStop(detail: String) {
         CaptureBridge.publish(CaptureBridge.Snapshot("", null, CaptureBridge.STATUS_UNAVAILABLE, detail = detail))
+        // A sessão inteira cai junto (o painel é encerrado): sem este aviso o jogador ficaria sem saber por quê.
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(applicationContext, "ClaudGame: não foi possível capturar a tela ($detail)", Toast.LENGTH_LONG).show()
         }
@@ -151,14 +168,20 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    // ---------------------------------------------------------------- captura (thread de captura)
+
     private fun startCapture(newProjection: MediaProjection) {
         if (destroyed) {
-            try { newProjection.stop() } catch (_: Exception) {}
+            try {
+                newProjection.stop()
+            } catch (_: Exception) {
+            }
             return
         }
-        releaseCapture()
+        releaseCapture() // sessão anterior (o jogador pode ativar o companheiro de novo)
         try {
             projection = newProjection
+            // Android 14+ exige o callback registrado ANTES de criar o VirtualDisplay.
             newProjection.registerCallback(projectionCallback, captureHandler)
 
             val (screenWidth, screenHeight) = DisplaySize.current(this)
@@ -176,7 +199,7 @@ class ScreenCaptureService : Service() {
                 null
             ) ?: throw IllegalStateException("VirtualDisplay não foi criado")
             CaptureBridge.sessionActive = true
-            Log.i(TAG, "Captura iniciada em ${width}x${height}")
+            Log.i(TAG, "Captura iniciada em ${width}x$height")
         } catch (error: Exception) {
             Log.e(TAG, "Falha ao iniciar MediaProjection/ImageReader", error)
             releaseCapture()
@@ -201,6 +224,8 @@ class ScreenCaptureService : Service() {
             closeQuietly(image)
             return
         }
+        // Guarda sempre o quadro MAIS RECENTE. Se a tela ficar parada depois de uma mudança, nenhum
+        // quadro novo chega; sem reter o último, a análise ficaria presa num quadro velho (ou sem imagem).
         heldImage?.let { closeQuietly(it) }
         heldImage = image
         scheduleAnalysis()
@@ -222,11 +247,16 @@ class ScreenCaptureService : Service() {
             heldImage = null
             lastAnalysisAt = SystemClock.elapsedRealtime()
         } else {
+            // Analisador ocupado (OCR em andamento): mantém o quadro e tenta de novo em instantes.
             captureHandler?.removeCallbacks(analysisRunnable)
             captureHandler?.postDelayed(analysisRunnable, BUSY_RETRY_MS)
         }
     }
 
+    /**
+     * Em Android < 14 não há onCapturedContentResize: confere o tamanho do display de tempos em tempos
+     * (no máximo a cada [DISPLAY_CHECK_INTERVAL_MS], para não consultar o WindowManager a cada quadro).
+     */
     private fun followDisplaySize(force: Boolean) {
         if (virtualDisplay == null) return
         val now = SystemClock.elapsedRealtime()
@@ -249,11 +279,12 @@ class ScreenCaptureService : Service() {
             val newReader = createImageReader(width, height)
             display.resize(width, height, densityDpi)
             display.surface = newReader.surface
+            // O quadro retido pertence ao leitor antigo: descartar antes de fechá-lo.
             discardHeldImage()
             current?.setOnImageAvailableListener(null, null)
             current?.close()
             reader = newReader
-            Log.i(TAG, "Captura redimensionada para ${width}x${height}")
+            Log.i(TAG, "Captura redimensionada para ${width}x$height")
         } catch (error: Exception) {
             Log.e(TAG, "Falha ao redimensionar a captura", error)
         }
@@ -267,7 +298,11 @@ class ScreenCaptureService : Service() {
     private fun releaseCapture() {
         captureHandler?.removeCallbacks(analysisRunnable)
         discardHeldImage()
-        try { virtualDisplay?.release() } catch (error: Exception) { Log.w(TAG, "Falha ao liberar VirtualDisplay", error) }
+        try {
+            virtualDisplay?.release()
+        } catch (error: Exception) {
+            Log.w(TAG, "Falha ao liberar VirtualDisplay", error)
+        }
         virtualDisplay = null
         reader?.let { oldReader ->
             try {
@@ -290,6 +325,8 @@ class ScreenCaptureService : Service() {
         CaptureBridge.sessionActive = false
     }
 
+    // ---------------------------------------------------------------- utilidades
+
     private fun scaledSize(width: Int, height: Int): Pair<Int, Int> {
         val longest = maxOf(width, height).coerceAtLeast(1)
         val scale = minOf(1f, MAX_DIMENSION.toFloat() / longest.toFloat())
@@ -297,7 +334,10 @@ class ScreenCaptureService : Service() {
     }
 
     private fun closeQuietly(image: Image) {
-        try { image.close() } catch (_: Exception) {}
+        try {
+            image.close()
+        } catch (_: Exception) {
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -331,6 +371,7 @@ class ScreenCaptureService : Service() {
         captureThread = null
         CaptureBridge.sessionActive = false
         CaptureBridge.clear()
+        // Captura e bolha são uma única sessão: nada de bolha órfã sem captura.
         stopService(Intent(this, ClaudGameOverlayService::class.java))
         super.onDestroy()
     }

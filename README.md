@@ -9,12 +9,10 @@ O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto 
 - 🎮 Biblioteca de jogos instalados e acesso rápido.
 - ⚡ Modo de jogo usando somente recursos que o Android realmente permite controlar.
 - 👁️ Captura de tela com **MediaProjection**, sempre mediante autorização do usuário.
-- 🧠 Pipeline de IA preparado para analisar eventos relevantes em vez de enviar todos os frames continuamente.
-- 🗣️ Voz em português usando o TTS nativo do Android.
-- 🎙️ Conversa natural com o jogador.
-- 😈 **Modo Trolagem**, com intensidade configurável e respostas contextuais.
-- 🪟 Assistente flutuante sobre o jogo.
-- 🔐 Nenhuma chave de API deve ser embutida no APK.
+- 🗣️ **Zuleide**, a companheira de jogo: escuta o jogador sem apertar nada, responde por voz em português e comenta a partida por conta própria.
+- 😈 **Modo Trolagem** (zueira): ela fica pegando no pé do jogador o tempo todo, mesmo sem ele falar.
+- 🪟 Painel flutuante mínimo sobre o jogo, sem texto na tela.
+- 🔐 Nenhuma chave de API é embutida no APK.
 
 ## Fundação já implementada
 
@@ -26,12 +24,15 @@ O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto 
 - Fluxo de autorização MediaProjection.
 - Serviço foreground para captura.
 - Aquisição de frames com ImageReader.
-- TTS nativo Android em português brasileiro, com preferência por voz masculina de melhor qualidade instalada.
+- TTS nativo Android em português brasileiro (motor do Google quando instalado, voz de maior qualidade, troca de voz no Game Hub).
 - Modo Trolagem como configuração local.
-- Captura JPEG compactada do frame atual para análise multimodal quando o jogador pergunta.
-- Cliente Android assíncrono para o proxy seguro Gemini (sem chave de API no APK).
+- Captura JPEG compactada (1024 px) do frame atual, enviada junto com a voz do jogador para análise multimodal.
+- Cliente Android com resposta em streaming (a Zuleide começa a falar na primeira frase) para o proxy seguro Gemini.
 - Worker Cloudflare em `cloudflare-worker/` para manter a chave Gemini no servidor.
-- GitHub Actions para gerar APK debug.
+- GitHub Actions para testar e gerar o APK debug (com Gradle Wrapper).
+- Painel flutuante compacto e arrastável (estado, mic, zueira, encerrar) e ações "Silenciar mic"/"Encerrar" na notificação.
+- Falas locais da Zuleide quando a IA online está indisponível (saudação, avisos e comentários).
+- Testes unitários da lógica pura no Android (detector de fala, parser de streaming, planejador, voz, JSON) e do Worker (Node).
 
 ## Arquitetura planejada
 
@@ -76,21 +77,73 @@ O ClaudGame poderá, conforme suporte do aparelho/versão do Android, organizar 
 
 ## Build
 
-Workflow: `.github/workflows/android-apk.yml`
+Pré-requisitos: JDK 17 e acesso à internet (Gradle, Google Maven e Maven Central).
 
-Saída:
-`android/app/build/outputs/apk/debug/app-debug.apk`
+```bash
+cd android
+./gradlew testDebugUnitTest   # testes unitários
+./gradlew assembleDebug       # APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease     # APK: app/build/outputs/apk/release/app-release.apk (mesma assinatura do projeto)
+```
+
+Workflow: `.github/workflows/android-apk.yml` (roda os testes, gera o APK e o publica como artefato `ClaudGame-debug`).
+
+Opções de build (`-P` na linha de comando):
+
+| Opção | Efeito |
+| --- | --- |
+| `-PclaudgameAiBackendUrl=https://...` | URL do proxy de IA. Sem ela vale `CLAUDGAME_AI_BACKEND_URL` e, por fim, o Worker padrão do projeto. |
+| `-PclaudgameOcr=none` | Compila **sem** o ML Kit (sem OCR local). A captura de tela e a IA multimodal continuam funcionando, pois o quadro vai direto à IA. Útil quando o Maven do Google não está acessível. |
+
+**Assinatura:** `android/claudgame-debug.keystore` é versionada de propósito (chave de uso pessoal, senha no `app/build.gradle.kts`). Assim todo build tem a mesma assinatura e um APK novo instala por cima do anterior. Ela **não serve para publicar em loja**: para isso gere uma chave própria.
 
 Tecnologias:
 - Kotlin 2.0.21
 - Android Gradle Plugin 8.7.3
-- Gradle 8.9
+- Gradle 8.9 (wrapper incluído)
 - Java 17
 - minSdk 26
 - targetSdk 35
+- Dependências: somente `com.google.mlkit:text-recognition` (OCR). O app usa apenas APIs da plataforma; AppCompat/Material foram removidos.
 
-## IA online (Gemini)
+## IA online (Gemini) e a Zuleide
 
-A integração Android já envia a pergunta, o contexto OCR e o último frame JPEG ao endpoint seguro `/api/game/analyze`. O Worker em `cloudflare-worker/` chama a Gemini Developer API. Para ativar a IA online, siga `cloudflare-worker/README.md`, guarde `GEMINI_API_KEY` como secret no Cloudflare e configure `CLAUDGAME_AI_BACKEND_URL` como secret do GitHub Actions. Sem essa URL o APK compila, mas informa que o servidor de IA ainda não foi configurado.
+O app fala com o Worker em `cloudflare-worker/`, que chama a Gemini Developer API (padrão `gemini-3.5-flash-lite`, que já usa raciocínio mínimo para responder rápido; dá para trocar pela variável `GEMINI_MODEL`). A chave `GEMINI_API_KEY` fica só no Cloudflare. Para ativar, siga `cloudflare-worker/README.md`. Sem o secret `CLAUDGAME_AI_BACKEND_URL`, o build usa o Worker padrão definido em `android/app/build.gradle.kts`.
 
-A voz e o reconhecimento continuam nativos do Android. A seleção de voz prefere uma voz pt-BR masculina quando o mecanismo instalado identifica uma; caso contrário usa a voz brasileira de melhor qualidade disponível.
+**Protocolo v2** (`POST /api/zuleide/turn`, resposta em streaming SSE): o app manda a fala do jogador (WAV 16 kHz) e a tela (JPEG) numa única chamada; o Gemini ouve, vê e responde, sem um reconhecedor de voz separado. Isso corta uma etapa de rede e permite falar a primeira frase enquanto o resto ainda está sendo gerado. A rota antiga `/api/game/analyze` continua funcionando para o app 0.9.x.
+
+Como a Zuleide funciona:
+- **Escuta automática:** um detector de fala (VAD) recorta cada fala do jogador; nada é gravado em disco e o áudio só é enviado quando há fala. O microfone é pausado enquanto ela fala ou pensa, para ela não se ouvir. Fones de ouvido ajudam muito, porque o som do jogo no alto-falante também chega ao microfone.
+- **Fala espontânea:** a cada ~30–50 s (modo normal) ou ~9–19 s (zueira) ela olha a tela e comenta, se houver algo novo. Dá para desligar no Game Hub ("Zuleide fala sozinha").
+- **Pedidos por voz:** "Zuleide, fica quieta por 10 minutos" faz ela parar de falar sozinha pelo tempo pedido.
+- **Painel:** tocar no nome = falar agora (interrompe a fala); 🎙 liga/desliga a escuta; 😈 liga/desliga a zueira; ✕ encerra. Os mesmos controles de mic e encerrar existem na notificação.
+- **Voz:** o Game Hub tem "Trocar voz da Zuleide" para experimentar as vozes pt-BR instaladas (instale vozes de alta qualidade em Configurações > Texto para voz > Google).
+
+Privacidade: com a Zuleide ativa o microfone fica aberto e a tela inteira é capturada; a fala detectada e as imagens da tela são enviadas ao Gemini pelo seu Worker. No plano gratuito o Google pode usar esses dados. Evite abrir conversas ou dados pessoais com ela ativa e use o mic mudo quando quiser.
+
+Cota: no modo zueira são muitas chamadas por hora. Se a cota gratuita do Gemini acabar o painel avisa ("cota do Gemini") e ela fica quieta por 90 s antes de tentar de novo.
+
+## Versão 0.10.0 — Zuleide
+
+- Nova assistente **Zuleide** (nome na interface, nas notificações e no prompt).
+- **Escuta automática** por VAD (sem botão "falar") com mic mudo no painel/notificação e "tocar para falar".
+- **Fala espontânea** e modo zueira bem mais debochado, com ritmo próprio e sem repetir piadas (memória da conversa).
+- **Mais rápido:** áudio + tela numa só chamada ao Gemini, resposta em streaming com fala frase a frase, imagem de 1024 px, conexão aquecida ao iniciar.
+- **Painel mínimo** (pílula com estado e três botões), sem mostrar o texto falado.
+- **Voz mais natural:** motor do Google quando instalado, melhor voz pt-BR, ducking do áudio do jogo e seletor de voz no Game Hub.
+- Worker v2 (`/api/zuleide/turn`, `/api/zuleide/version`) com testes em Node; o app avisa quando o Worker publicado é antigo.
+
+## Versão 0.9.0 — auditoria e correções
+
+- **Crash ao abrir no Android 8–12:** `PackageManager.ApplicationInfoFlags` só existe no Android 13+. A listagem de jogos agora usa `queryIntentActivities` com verificação de versão.
+- **Visão da IA nunca funcionava:** o JPEG era entregue a `InputImage.fromByteArray(..., JPEG)`, que só aceita NV21/YV12 e lançava exceção. O quadro agora é convertido corretamente (respeitando o `rowStride`) e o OCR usa `InputImage.fromBitmap`.
+- **IA sem imagem em tela parada:** a captura só gera quadros quando a tela muda e o app descartava imagens com mais de 5 s. Agora o quadro mais recente é retido e sempre enviado.
+- **Travamentos:** conversão de imagem pixel a pixel na thread principal (que também desenha o painel). Agora roda numa thread dedicada.
+- **Rotação de tela:** a captura é redimensionada quando o jogo gira (Android < 14 não tem callback; Android 14+ usa `onCapturedContentResize`).
+- **Segurança:** o broadcast com caminho de arquivo (exportado em Android < 13) foi substituído por uma ponte em memória; o quadro não fica mais gravado em disco.
+- **Build:** adicionados Gradle Wrapper e keystore estável (`assembleDebug` falhava sem o keystore gerado pelo CI); removidas dependências não usadas (AppCompat, Material, core-ktx, activity-ktx).
+- **Interface:** tema escuro explícito (o tema DayNight podia deixar o texto do seletor de jogos escuro sobre fundo escuro com o aparelho em modo claro), suporte a edge-to-edge do Android 15, painel flutuante em dp (antes em pixels, minúsculo em telas densas), arrasto vertical corrigido (estava invertido), ícone do app e ícone de notificação.
+- **Permissões:** microfone e notificações (Android 13+) pedidos juntos; retomada automática depois de autorizar a sobreposição; atalho para as configurações quando o microfone foi negado em definitivo.
+- **Estado:** modo trolagem e último jogo persistem (e sobrevivem à rotação); a seleção do jogo não é mais perdida ao voltar para o Hub; o modo pode ser alterado durante a partida, pelo painel.
+- **Serviços:** serviço de captura não fica mais órfão se iniciado sem autorização; ativar o companheiro duas vezes não vaza `MediaProjection`; "ENCERRAR COMPANHEIRO IA" no Hub e ação "Encerrar" na notificação.
+- **Voz:** resposta enfileirada até o TTS ficar pronto (antes era perdida), aviso quando não há voz pt-BR instalada, `AssistantEngine` ligado como plano B offline e correção de índice negativo quando `hashCode() == Int.MIN_VALUE`.

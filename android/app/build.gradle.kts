@@ -35,8 +35,8 @@ android {
         applicationId = "com.lucasmoraes.claudgame"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9.0"
+        versionCode = 10
+        versionName = "0.10.0"
         buildConfigField("String", "AI_BACKEND_URL", "\"$aiBackendUrl\"")
     }
 
@@ -93,4 +93,6 @@ dependencies {
         implementation("com.google.mlkit:text-recognition:16.0.1")
     }
     testImplementation("junit:junit:4.13.2")
+    // org.json da plataforma é só um stub nos testes de JVM; esta é a mesma biblioteca, de verdade.
+    testImplementation("org.json:json:20240303")
 }

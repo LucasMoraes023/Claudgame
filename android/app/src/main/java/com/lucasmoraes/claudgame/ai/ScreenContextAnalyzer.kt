@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.media.Image
 import android.util.Log
 import com.lucasmoraes.claudgame.capture.CaptureBridge
+import com.lucasmoraes.claudgame.companion.FrameSignature
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -12,11 +13,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Converte um quadro da tela em JPEG + contexto de texto (OCR) e publica o resultado.
  *
- * Correções:
- *  - usa InputImage.fromBitmap para RGBA_8888, evitando o caminho JPEG/NV21 inválido;
- *  - conversão e compressão ficam fora da thread principal;
- *  - respeita rowStride;
- *  - mantém o JPEG do mesmo quadro que foi entregue ao OCR.
+ * Correções em relação à versão anterior:
+ *  - o JPEG era passado a `InputImage.fromByteArray(..., ImageFormat.JPEG)`, que só aceita NV21/YV12
+ *    e lançava exceção: NENHUM quadro chegava à IA ("falha ao converter a captura");
+ *  - a conversão pixel a pixel rodava na thread principal (travava o painel flutuante);
+ *    agora usa cópia em bloco respeitando o rowStride e roda na thread de captura;
+ *  - a rotação do display era enviada ao OCR, mas o espelho já entrega a imagem "em pé".
  */
 class ScreenContextAnalyzer(
     private val ocr: OcrEngine,
@@ -24,8 +26,11 @@ class ScreenContextAnalyzer(
 ) {
     private companion object {
         const val TAG = "ClaudGameVision"
-        const val SOFT_JPEG_LIMIT = 3_300_000
-        const val HARD_JPEG_LIMIT = 3_500_000
+        // Quadro menor = envio e resposta mais rápidos. 1024 px no lado maior ainda deixa a interface legível.
+        const val JPEG_MAX_SIDE = 1024
+        const val JPEG_QUALITY = 62
+        const val SOFT_JPEG_LIMIT = 600_000
+        const val HARD_JPEG_LIMIT = 1_000_000
         const val GRID_X = 128
         const val GRID_Y = 72
         const val STALE_BUSY_MS = 20_000L
@@ -33,11 +38,19 @@ class ScreenContextAnalyzer(
 
     private val busy = AtomicBoolean(false)
 
-    @Volatile private var closed = false
-    @Volatile private var busySince = 0L
+    @Volatile
+    private var closed = false
 
+    @Volatile
+    private var busySince = 0L
+
+    /**
+     * Tenta analisar [image]. Devolve true se assumiu a posse da imagem (e a fechará);
+     * devolve false se está ocupado ou encerrado — nesse caso quem chamou continua dono da imagem.
+     */
     fun tryAnalyze(image: Image): Boolean {
         if (closed) return false
+        // Watchdog: se um OCR nunca devolver o resultado, não deixa o analisador travado para sempre.
         if (busy.get() && System.currentTimeMillis() - busySince > STALE_BUSY_MS) {
             Log.w(TAG, "Análise anterior não terminou em ${STALE_BUSY_MS / 1000}s; liberando o analisador")
             busy.set(false)
@@ -66,7 +79,6 @@ class ScreenContextAnalyzer(
             finishWithoutFrame(CaptureBridge.STATUS_BLACK, null)
             return true
         }
-
         val jpeg = try {
             encodeJpeg(bitmap)
         } catch (error: Exception) {
@@ -76,7 +88,6 @@ class ScreenContextAnalyzer(
             Log.e(TAG, "Sem memória para gerar JPEG", error)
             null
         }
-
         if (jpeg == null) {
             recycleQuietly(bitmap)
             finishWithoutFrame(CaptureBridge.STATUS_UNAVAILABLE, "JPEG indisponível")
@@ -84,12 +95,12 @@ class ScreenContextAnalyzer(
         }
 
         Log.d(TAG, "Quadro convertido: ${bitmap.width}x${bitmap.height}, ${jpeg.size} bytes")
-        val frame = bitmap
+        val frame: Bitmap = bitmap
+        val signature = signatureOf(frame)
         val completed = AtomicBoolean(false)
         val complete: (String) -> Unit = { text ->
-            if (completed.compareAndSet(false, true)) finishWithFrame(frame, jpeg, text)
+            if (completed.compareAndSet(false, true)) finishWithFrame(frame, jpeg, text, signature)
         }
-
         try {
             ocr.recognize(frame, complete)
         } catch (error: Exception) {
@@ -103,14 +114,12 @@ class ScreenContextAnalyzer(
         closed = true
     }
 
-    private fun finishWithFrame(frame: Bitmap, jpeg: ByteArray, text: String) {
+    private fun finishWithFrame(frame: Bitmap, jpeg: ByteArray, text: String, signature: ByteArray) {
         try {
             if (!closed) {
-                onSnapshot(
+                publish(
                     CaptureBridge.Snapshot(
-                        ScreenContextBuilder.build(text),
-                        jpeg,
-                        CaptureBridge.STATUS_OK
+                        ScreenContextBuilder.build(text), jpeg, CaptureBridge.STATUS_OK, signature = signature
                     )
                 )
             }
@@ -122,12 +131,24 @@ class ScreenContextAnalyzer(
 
     private fun finishWithoutFrame(status: String, detail: String?) {
         try {
-            if (!closed) onSnapshot(CaptureBridge.Snapshot("", null, status, detail = detail))
+            if (!closed) publish(CaptureBridge.Snapshot("", null, status, detail = detail))
         } finally {
             busy.set(false)
         }
     }
 
+    private fun publish(snapshot: CaptureBridge.Snapshot) {
+        try {
+            onSnapshot(snapshot)
+        } catch (error: Exception) {
+            Log.w(TAG, "Falha ao publicar quadro", error)
+        }
+    }
+
+    /**
+     * ImageReader RGBA_8888 tem preenchimento ao fim de cada linha (rowStride > width * 4). Copia o buffer
+     * numa bitmap mais larga (largura = rowStride / 4) e recorta; ignorar o stride gera imagem torta.
+     */
     private fun imageToBitmap(image: Image): Bitmap? {
         val plane = image.planes.firstOrNull() ?: return null
         val pixelStride = plane.pixelStride
@@ -148,6 +169,7 @@ class ScreenContextAnalyzer(
             if (buffer.remaining().toLong() >= needed) {
                 padded.copyPixelsFromBuffer(buffer)
             } else {
+                // Algumas implementações omitem o preenchimento da última linha.
                 val complete = ByteBuffer.allocate(needed.toInt())
                 complete.put(buffer)
                 complete.rewind()
@@ -161,6 +183,7 @@ class ScreenContextAnalyzer(
         }
     }
 
+    /** Quadro preto = projeção bloqueada (ex.: conteúdo protegido). Amostra uma grade em vez de varrer tudo. */
     private fun looksBlack(bitmap: Bitmap): Boolean {
         val width = bitmap.width
         val height = bitmap.height
@@ -181,27 +204,47 @@ class ScreenContextAnalyzer(
     }
 
     private fun encodeJpeg(source: Bitmap): ByteArray? {
-        var quality = 76
-        var bytes = compress(source, quality)
-        while (bytes.size > SOFT_JPEG_LIMIT && quality > 48) {
-            quality -= 8
-            bytes = compress(source, quality)
-        }
-        if (bytes.size > SOFT_JPEG_LIMIT) {
-            val ratio = minOf(1f, 1280f / maxOf(source.width, source.height).toFloat())
-            val scaled = Bitmap.createScaledBitmap(
+        val longest = maxOf(source.width, source.height)
+        val scaled = if (longest > JPEG_MAX_SIDE) {
+            val ratio = JPEG_MAX_SIDE.toFloat() / longest
+            Bitmap.createScaledBitmap(
                 source,
                 (source.width * ratio).toInt().coerceAtLeast(1),
                 (source.height * ratio).toInt().coerceAtLeast(1),
                 true
             )
-            try {
-                bytes = compress(scaled, 58)
-            } finally {
-                if (scaled !== source) recycleQuietly(scaled)
+        } else {
+            source
+        }
+        try {
+            var quality = JPEG_QUALITY
+            var bytes = compress(scaled, quality)
+            while (bytes.size > SOFT_JPEG_LIMIT && quality > 40) {
+                quality -= 8
+                bytes = compress(scaled, quality)
+            }
+            return if (bytes.isNotEmpty() && bytes.size <= HARD_JPEG_LIMIT) bytes else null
+        } finally {
+            if (scaled !== source) recycleQuietly(scaled)
+        }
+    }
+
+    /** Miniatura 32x18 em luminância: barata e suficiente para saber se a tela mudou. */
+    private fun signatureOf(bitmap: Bitmap): ByteArray {
+        val signature = ByteArray(FrameSignature.SIZE)
+        val width = bitmap.width
+        val height = bitmap.height
+        var index = 0
+        for (row in 0 until FrameSignature.ROWS) {
+            val y = ((row + 0.5f) * height / FrameSignature.ROWS).toInt().coerceIn(0, height - 1)
+            for (column in 0 until FrameSignature.COLUMNS) {
+                val x = ((column + 0.5f) * width / FrameSignature.COLUMNS).toInt().coerceIn(0, width - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val luminance = (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000
+                signature[index++] = luminance.toByte()
             }
         }
-        return if (bytes.isNotEmpty() && bytes.size <= HARD_JPEG_LIMIT) bytes else null
+        return signature
     }
 
     private fun compress(bitmap: Bitmap, quality: Int): ByteArray {
@@ -213,12 +256,16 @@ class ScreenContextAnalyzer(
     }
 
     private fun closeQuietly(image: Image) {
-        try { image.close() } catch (_: Exception) {}
+        try {
+            image.close()
+        } catch (_: Exception) {
+        }
     }
 
     private fun recycleQuietly(bitmap: Bitmap) {
         try {
             if (!bitmap.isRecycled) bitmap.recycle()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 }

@@ -1,451 +1,471 @@
 package com.lucasmoraes.claudgame.overlay
 
-import android.Manifest
-import android.app.Service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.Handler
 import android.os.IBinder
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
+import android.os.Looper
+import android.text.TextUtils
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.lucasmoraes.claudgame.ai.NativeVoiceConfig
-import com.lucasmoraes.claudgame.capture.CaptureBridge
-import com.lucasmoraes.claudgame.ai.GameAiClient
+import android.widget.Toast
 import com.lucasmoraes.claudgame.BuildConfig
+import com.lucasmoraes.claudgame.ClaudGamePrefs
+import com.lucasmoraes.claudgame.DisplaySize
+import com.lucasmoraes.claudgame.MainActivity
+import com.lucasmoraes.claudgame.R
+import com.lucasmoraes.claudgame.capture.CaptureBridge
+import com.lucasmoraes.claudgame.capture.ScreenCaptureService
+import com.lucasmoraes.claudgame.companion.Persona
+import com.lucasmoraes.claudgame.companion.ZuleideBrain
 import kotlin.math.abs
 
-class ClaudGameOverlayService : Service() {
+/**
+ * Painel flutuante da Zuleide: uma pílula pequena (bolinha de estado, nome e três botões) que fica sobre o jogo.
+ * Não mostra o texto do que é falado. Toda a conversa acontece por voz, via [ZuleideBrain]:
+ *  - toque no nome = "falar agora" (interrompe a fala e escuta);  arrastar = mover;
+ *  - 🎙 liga/desliga a escuta automática (🔇 = mic mudo);  😈 liga/desliga o modo zueira;  ✕ encerra.
+ * Roda como serviço em primeiro plano (tipo microfone), exigência do Android para manter o microfone aberto.
+ */
+class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
     companion object {
-        const val EXTRA_TROLL = "troll"
+        const val ACTION_STOP = "com.lucasmoraes.claudgame.action.STOP_SESSION"
+        const val ACTION_TOGGLE_MIC = "com.lucasmoraes.claudgame.action.TOGGLE_MIC"
+        private const val TAG = "ClaudGameOverlay"
         private const val CHANNEL = "claudgame_overlay"
         private const val NOTIFICATION_ID = 1002
+        private const val FLASH_MS = 4_000L
+        private const val COLOR_FLASH = 0xFFFB923C.toInt()
     }
 
-    private lateinit var windowManager: WindowManager
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var windowManager: WindowManager? = null
     private var panel: View? = null
-    private var speechRecognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private var recognitionInProgress = false
-    private var recognitionRetryCount = 0
-    private var triedOnDeviceFallback = false
-    private var serviceDestroyed = false
-    private var trollEnabled = false
-    private var latestScreenContext = ""
-    private var latestScreenSnapshot: CaptureBridge.Snapshot? = null
-    private lateinit var statusText: TextView
-    private lateinit var talkButton: Button
-    private val aiClient by lazy { GameAiClient(BuildConfig.AI_BACKEND_URL) }
+    private var panelParams: WindowManager.LayoutParams? = null
+    private var dot: GradientDrawable? = null
+    private var stateText: TextView? = null
+    private var micButton: TextView? = null
+    private var trollButton: TextView? = null
 
-    private val snapshotListener = CaptureBridge.Listener { snapshot ->
-        latestScreenSnapshot = snapshot
-        latestScreenContext = snapshot.screenContext
-        if (!recognitionInProgress && ::statusText.isInitialized) {
-            statusText.text = when (snapshot.status) {
-                CaptureBridge.STATUS_OK -> "● Imagem da tela recebida • pronto"
-                CaptureBridge.STATUS_BLACK -> "● Android entregou tela preta • captura bloqueada"
-                CaptureBridge.STATUS_UNAVAILABLE -> "● Falha ao converter a captura"
-                CaptureBridge.STATUS_STOPPED -> "● Captura de tela encerrada"
-                else -> "● Aguardando primeira imagem da tela"
-            }
-        }
+    private var brain: ZuleideBrain? = null
+    private var currentState = ZuleideBrain.State.STARTING
+    private var flashText: String? = null
+    private var lastCaptureStatus: String? = null
+    private var serviceDestroyed = false
+
+    private var downX = 0f
+    private var downY = 0f
+    private var startX = 0
+    private var startY = 0
+    private var moved = false
+
+    private val snapshotListener = CaptureBridge.Listener { snapshot -> onSnapshot(snapshot) }
+    private val clearFlashRunnable = Runnable {
+        flashText = null
+        renderState()
     }
+
+    // ------------------------------------------------------------------ ciclo de vida
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         CaptureBridge.addListener(snapshotListener)
-        latestScreenSnapshot = CaptureBridge.latest
-        latestScreenContext = latestScreenSnapshot?.screenContext.orEmpty()
-
-        try {
-            tts = TextToSpeech(applicationContext) { status ->
-                if (status == TextToSpeech.SUCCESS && !serviceDestroyed) {
-                    ttsReady = true
-                    val selectedVoice = NativeVoiceConfig.configure(tts!!)
-                    android.util.Log.i("ClaudGameVoice", "Voz Android selecionada: $selectedVoice")
-                }
-            }
-        } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Falha ao inicializar voz", error)
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        try {
-            val notification = Notification.Builder(this, CHANNEL)
-                .setContentTitle("ClaudGame")
-                .setContentText("Companheiro IA ativo")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setOngoing(true)
-                .build()
-            if (android.os.Build.VERSION.SDK_INT >= 34) {
-                // O serviço é iniciado pela Activity ainda visível e com RECORD_AUDIO concedido.
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSession()
+                return START_NOT_STICKY
             }
-            trollEnabled = intent?.getBooleanExtra(EXTRA_TROLL, false) ?: trollEnabled
-            if (panel == null) showOverlay()
+            ACTION_TOGGLE_MIC -> {
+                if (panel == null) stopSelf() else toggleMic()
+                return START_NOT_STICKY
+            }
+        }
+        try {
+            startInForeground()
         } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Falha ao iniciar companheiro", error)
-            stopSelf(startId)
+            Log.e(TAG, "Não foi possível entrar em primeiro plano", error)
+            Toast.makeText(
+                this,
+                "Não foi possível iniciar a ${Persona.NAME} (${error.javaClass.simpleName}).",
+                Toast.LENGTH_LONG
+            ).show()
+            stopSession()
             return START_NOT_STICKY
         }
-        // Não ressuscitar a bolha automaticamente depois que o usuário fecha o Game Hub.
+        if (panel == null && !showOverlay()) {
+            Toast.makeText(
+                this,
+                "Não foi possível exibir o painel flutuante. Confira a permissão de sobreposição.",
+                Toast.LENGTH_LONG
+            ).show()
+            stopSession()
+            return START_NOT_STICKY
+        }
+        if (brain == null) {
+            brain = ZuleideBrain(this, BuildConfig.AI_BACKEND_URL, this).also { it.start() }
+        }
         return START_NOT_STICKY
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        android.util.Log.i("ClaudGameOverlay", "Game Hub removido; encerrando bolha e captura")
-        stopService(Intent(this, com.lucasmoraes.claudgame.capture.ScreenCaptureService::class.java))
+    private fun startInForeground() {
+        val notification = buildNotification()
+        when {
+            Build.VERSION.SDK_INT >= 34 -> startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+            Build.VERSION.SDK_INT >= 29 -> startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+            else -> startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /** Encerra a sessão inteira (Zuleide + painel + captura). */
+    private fun stopSession() {
+        CaptureBridge.sessionActive = false
+        stopService(Intent(this, ScreenCaptureService::class.java))
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        panel?.post { clampPanel() }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "Game Hub removido; encerrando a sessão")
+        stopSession()
         super.onTaskRemoved(rootIntent)
     }
 
-    private fun showOverlay() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(22, 16, 22, 16)
-            background = GradientDrawable().apply {
-                setColor(Color.argb(232, 15, 18, 28))
-                cornerRadius = 28f
-                setStroke(2, Color.argb(180, 100, 80, 255))
+    override fun onDestroy() {
+        serviceDestroyed = true
+        CaptureBridge.removeListener(snapshotListener)
+        mainHandler.removeCallbacksAndMessages(null)
+        brain?.stop()
+        brain = null
+        panel?.let { view ->
+            try {
+                windowManager?.removeView(view)
+            } catch (error: Exception) {
+                Log.w(TAG, "Falha ao remover o painel", error)
             }
         }
+        panel = null
+        stopService(Intent(this, ScreenCaptureService::class.java))
+        super.onDestroy()
+    }
 
-        val title = TextView(this).apply {
-            text = "CLAUDGAME • IA"
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    // ------------------------------------------------------------------ painel
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun dpF(value: Int): Float = value * resources.displayMetrics.density
+
+    private fun showOverlay(): Boolean {
+        val manager = windowManager ?: return false
+        val muted = Color.rgb(155, 164, 184)
+
+        val statusDot = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.rgb(156, 163, 175))
+        }
+        val dotView = View(this).apply { background = statusDot }
+        val name = TextView(this).apply {
+            text = Persona.NAME
             textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
+            maxLines = 1
         }
-        statusText = TextView(this).apply {
-            text = "● Observando • pronto para conversar"
-            textSize = 12f
-            setTextColor(Color.rgb(100, 255, 180))
-            setPadding(0, 8, 0, 8)
+        val state = TextView(this).apply {
+            textSize = 10f
+            setTextColor(muted)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            maxWidth = dp(96)
+            minWidth = dp(54)
         }
-        val row = LinearLayout(this).apply {
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(name)
+        texts.addView(state)
+
+        // Bloco da esquerda: arrastar move o painel; tocar = "falar agora".
+        val identity = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, dp(6), 0)
+            contentDescription = "Falar agora com a ${Persona.NAME}. Arraste para mover."
         }
-        talkButton = Button(this).apply {
-            text = "🎙 FALAR"
-            textSize = 12f
+        identity.addView(dotView, LinearLayout.LayoutParams(dp(10), dp(10)).apply { rightMargin = dp(8) })
+        identity.addView(texts)
+
+        fun button(label: String, description: String, onClick: () -> Unit) = TextView(this).apply {
+            text = label
+            textSize = 17f
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
+            contentDescription = description
+            setOnClickListener { onClick() }
+        }
+        val mic = button("🎙", "Ligar ou desligar a escuta automática") { toggleMic() }
+        val troll = button("😈", "Ligar ou desligar o modo zueira") { toggleTroll() }
+        val close = button("✕", "Encerrar a ${Persona.NAME}") { stopSession() }.apply { setTextColor(muted) }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(5), dp(6), dp(5))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(82, 64, 150))
-                cornerRadius = 22f
-            }
-            setOnClickListener {
-                if (recognitionInProgress) stopListening() else startListening()
+                setColor(Color.argb(236, 15, 18, 28))
+                cornerRadius = dpF(22)
+                setStroke(dp(1), Color.argb(180, 100, 80, 255))
             }
         }
-        val troll = TextView(this).apply {
-            text = if (trollEnabled) "😈 Trolagem: ATIVA" else "😈 Trolagem: DESLIGADA"
-            textSize = 11f
-            setTextColor(Color.rgb(255, 190, 90))
-            setPadding(12, 0, 0, 0)
-        }
-        row.addView(talkButton, LinearLayout.LayoutParams(120, 48))
-        row.addView(troll, LinearLayout.LayoutParams(0, 48, 1f))
-        root.addView(title)
-        root.addView(statusText)
-        root.addView(row)
+        root.addView(identity)
+        root.addView(mic, LinearLayout.LayoutParams(dp(34), dp(34)))
+        root.addView(troll, LinearLayout.LayoutParams(dp(34), dp(34)))
+        root.addView(close, LinearLayout.LayoutParams(dp(34), dp(34)))
+
+        dot = statusDot
+        stateText = state
+        micButton = mic
+        trollButton = troll
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            android.graphics.PixelFormat.TRANSLUCENT
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 24
-            y = 110
+            gravity = Gravity.TOP or Gravity.RIGHT
+            x = dp(10)
+            y = dp(88)
         }
+        identity.setOnTouchListener(dragListener(params))
 
-        title.setOnTouchListener(dragListener(root, params))
-        statusText.setOnTouchListener(dragListener(root, params))
-
-        try {
-            windowManager.addView(root, params)
+        updateButtons()
+        renderState()
+        return try {
+            manager.addView(root, params)
             panel = root
+            panelParams = params
+            true
         } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Falha ao exibir sobreposição", error)
-            panel = null
+            Log.e(TAG, "Falha ao exibir a sobreposição", error)
+            dot = null
+            stateText = null
+            micButton = null
+            trollButton = null
+            false
         }
     }
 
-    private fun dragListener(root: View, params: WindowManager.LayoutParams) =
-        View.OnTouchListener { _, event ->
+    private fun dragListener(params: WindowManager.LayoutParams): View.OnTouchListener {
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        return View.OnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
                     downY = event.rawY
                     startX = params.x
                     startY = params.y
+                    moved = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (abs(event.rawX - downX) > 4 || abs(event.rawY - downY) > 4) {
+                    if (abs(event.rawX - downX) > slop || abs(event.rawY - downY) > slop) moved = true
+                    if (moved) {
+                        // Gravidade TOP|RIGHT: x = distância até a borda direita (dedo para a direita = x menor);
+                        // y = distância até o topo (dedo para baixo = y maior).
                         params.x = startX + (downX - event.rawX).toInt()
-                        params.y = startY + (downY - event.rawY).toInt()
-                        try {
-                            windowManager.updateViewLayout(root, params)
-                        } catch (error: Exception) {
-                            android.util.Log.w("ClaudGameOverlay", "Falha ao mover painel", error)
-                        }
+                        params.y = startY + (event.rawY - downY).toInt()
+                        clampPanel()
                     }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) brain?.talkNow()
                     true
                 }
                 else -> true
             }
         }
-
-    private var downX = 0f
-    private var downY = 0f
-    private var startX = 0
-    private var startY = 0
-
-    private fun startListening() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            statusText.text = "Microfone não autorizado"
-            return
-        }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            statusText.text = "Reconhecimento de voz indisponível"
-            return
-        }
-
-        recognitionRetryCount = 0
-        triedOnDeviceFallback = false
-        beginRecognition()
     }
 
-    private fun beginRecognition() {
+    /** Mantém o painel dentro da tela e aplica a posição. */
+    private fun clampPanel() {
+        val view = panel ?: return
+        val params = panelParams ?: return
+        val manager = windowManager ?: return
+        val (screenWidth, screenHeight) = DisplaySize.current(this)
+        params.x = params.x.coerceIn(0, (screenWidth - view.width).coerceAtLeast(0))
+        params.y = params.y.coerceIn(0, (screenHeight - view.height).coerceAtLeast(0))
+        try {
+            manager.updateViewLayout(view, params)
+        } catch (error: Exception) {
+            Log.w(TAG, "Falha ao mover o painel", error)
+        }
+    }
+
+    // ------------------------------------------------------------------ botões
+
+    private fun toggleMic() {
+        val enable = !ClaudGamePrefs.isListeningEnabled(this)
+        val current = brain
+        if (current != null) current.setListeningEnabled(enable) else ClaudGamePrefs.setListeningEnabled(this, enable)
+        updateButtons()
+        refreshNotification()
+    }
+
+    private fun toggleTroll() {
+        val enable = !ClaudGamePrefs.isTrollEnabled(this)
+        ClaudGamePrefs.setTrollEnabled(this, enable)
+        updateButtons()
+        brain?.onPreferencesChanged()
+        onFlash(if (enable) "zueira ligada" else "zueira desligada")
+    }
+
+    private fun updateButtons() {
+        val listening = ClaudGamePrefs.isListeningEnabled(this)
+        micButton?.apply {
+            text = if (listening) "🎙" else "🔇"
+            alpha = if (listening) 1f else 0.6f
+        }
+        trollButton?.alpha = if (ClaudGamePrefs.isTrollEnabled(this)) 1f else 0.35f
+    }
+
+    // ------------------------------------------------------------------ estado exibido (ZuleideBrain.Ui)
+
+    override fun onState(state: ZuleideBrain.State) {
         if (serviceDestroyed) return
+        currentState = state
+        renderState()
+    }
+
+    override fun onFlash(text: String) {
+        if (serviceDestroyed) return
+        flashText = text
+        mainHandler.removeCallbacks(clearFlashRunnable)
+        mainHandler.postDelayed(clearFlashRunnable, FLASH_MS)
+        renderState()
+    }
+
+    private fun renderState() {
+        val flash = flashText
+        val (label, color) = when {
+            flash != null -> flash to COLOR_FLASH
+            else -> when (currentState) {
+                ZuleideBrain.State.LISTENING -> "ouvindo" to 0xFF4ADE80.toInt()
+                ZuleideBrain.State.HEARING -> "te ouvindo…" to 0xFFFACC15.toInt()
+                ZuleideBrain.State.THINKING -> "pensando…" to 0xFF60A5FA.toInt()
+                ZuleideBrain.State.SPEAKING -> "falando" to 0xFFA78BFA.toInt()
+                ZuleideBrain.State.MUTED -> "mic mudo" to 0xFF9CA3AF.toInt()
+                ZuleideBrain.State.NO_MIC -> "sem mic" to 0xFFF87171.toInt()
+                ZuleideBrain.State.STARTING -> "iniciando" to 0xFF9CA3AF.toInt()
+            }
+        }
+        stateText?.text = label
+        dot?.setColor(color)
+    }
+
+    private fun onSnapshot(snapshot: CaptureBridge.Snapshot) {
+        if (serviceDestroyed) return
+        brain?.onSnapshot(snapshot)
+        if (snapshot.status != lastCaptureStatus) {
+            lastCaptureStatus = snapshot.status
+            when (snapshot.status) {
+                CaptureBridge.STATUS_BLACK -> onFlash("tela preta")
+                CaptureBridge.STATUS_UNAVAILABLE -> onFlash("sem tela")
+                CaptureBridge.STATUS_STOPPED -> onFlash("captura encerrada")
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ notificação
+
+    private fun buildNotification(): Notification {
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val openHub = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            flags
+        )
+        val toggleMic = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, ClaudGameOverlayService::class.java).setAction(ACTION_TOGGLE_MIC),
+            flags
+        )
+        val stop = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, ClaudGameOverlayService::class.java).setAction(ACTION_STOP),
+            flags
+        )
+        val listening = ClaudGamePrefs.isListeningEnabled(this)
+        val icon = Icon.createWithResource(this, R.drawable.ic_stat_claudgame)
+        val builder = Notification.Builder(this, CHANNEL)
+            .setContentTitle("${Persona.NAME} está com você")
+            .setContentText(
+                if (listening) "Ouvindo o microfone e comentando a partida" else "Microfone silenciado • ela segue comentando"
+            )
+            .setSmallIcon(R.drawable.ic_stat_claudgame)
+            .setContentIntent(openHub)
+            .setOngoing(true)
+            .addAction(Notification.Action.Builder(icon, if (listening) "Silenciar mic" else "Ativar mic", toggleMic).build())
+            .addAction(Notification.Action.Builder(icon, "Encerrar", stop).build())
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+        return builder.build()
+    }
+
+    private fun refreshNotification() {
         try {
-            recreateSpeechRecognizer()
-            speechRecognizer = if (
-                triedOnDeviceFallback &&
-                android.os.Build.VERSION.SDK_INT >= 31 &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-            ) {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-            } else {
-                SpeechRecognizer.createSpeechRecognizer(this)
-            }
-            speechRecognizer?.setRecognitionListener(listener)
-
-            recognitionInProgress = true
-            statusText.text = "● Ouvindo você..."
-            talkButton.text = "⏹ PARAR"
-
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, triedOnDeviceFallback)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2800L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
-                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            }
-            speechRecognizer?.startListening(intent)
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification())
         } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Falha ao iniciar reconhecimento", error)
-            recognitionInProgress = false
-            statusText.text = "Não foi possível iniciar o microfone"
-            talkButton.text = "🎙 FALAR"
+            Log.w(TAG, "Falha ao atualizar a notificação", error)
         }
-    }
-
-    private fun stopListening() {
-        recognitionInProgress = false
-        try {
-            speechRecognizer?.stopListening()
-        } catch (_: Exception) {
-        }
-        statusText.text = "● Pronto para conversar"
-        talkButton.text = "🎙 FALAR"
-    }
-
-    private fun recreateSpeechRecognizer() {
-        try {
-            speechRecognizer?.destroy()
-        } catch (_: Exception) {
-        }
-        speechRecognizer = null
-    }
-
-    private val listener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: android.os.Bundle?) {
-            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Fale agora..."
-        }
-
-        override fun onBeginningOfSpeech() {
-            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Ouvindo..."
-        }
-
-        override fun onEndOfSpeech() {
-            if (!serviceDestroyed && ::statusText.isInitialized) statusText.text = "● Processando..."
-        }
-
-        override fun onError(error: Int) {
-            if (serviceDestroyed) return
-            recognitionInProgress = false
-            if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
-            android.util.Log.e("ClaudGameVoice", "SpeechRecognizer onError code=$error")
-            if (
-                error == SpeechRecognizer.ERROR_SERVER &&
-                !triedOnDeviceFallback &&
-                android.os.Build.VERSION.SDK_INT >= 31 &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(this@ClaudGameOverlayService)
-            ) {
-                triedOnDeviceFallback = true
-                if (::statusText.isInitialized) statusText.text = "● Serviço online falhou; tentando reconhecimento offline..."
-                recreateSpeechRecognizer()
-                android.os.Handler(mainLooper).postDelayed({
-                    if (!serviceDestroyed) beginRecognition()
-                }, 400L)
-                return
-            }
-            if ((error == SpeechRecognizer.ERROR_NO_MATCH ||
-                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && recognitionRetryCount < 1) {
-                recognitionRetryCount++
-                if (::statusText.isInitialized) statusText.text = "● Não consegui captar. Tentando novamente..."
-                recreateSpeechRecognizer()
-                android.os.Handler(mainLooper).postDelayed({
-                    if (!serviceDestroyed) beginRecognition()
-                }, 350L)
-                return
-            }
-            if (::statusText.isInitialized) {
-                statusText.text = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não entendi • fale um pouco mais perto do microfone"
-                    SpeechRecognizer.ERROR_NETWORK,
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Sem conexão para reconhecimento de voz"
-                    SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone • verifique se outro app está usando o áudio"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconhecimento ocupado • tente novamente"
-                    SpeechRecognizer.ERROR_CLIENT -> "Falha interna do serviço de voz (erro $error)"
-                    else -> "Não consegui ouvir • erro $error"
-                }
-            }
-        }
-
-        override fun onResults(results: android.os.Bundle) {
-            if (serviceDestroyed) return
-            recognitionInProgress = false
-            recognitionRetryCount = 0
-            if (::talkButton.isInitialized) talkButton.text = "🎙 FALAR"
-            val text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-            if (text.isBlank()) {
-                if (::statusText.isInitialized) statusText.text = "Não entendi • fale novamente"
-                return
-            }
-            if (::statusText.isInitialized) statusText.text = "Você: $text"
-            statusText.text = "● Consultando a inteligência artificial..."
-            val snapshot = latestScreenSnapshot ?: CaptureBridge.latest
-            val jpeg = snapshot?.takeIf { it.status == CaptureBridge.STATUS_OK }?.jpeg
-            val screenContext = snapshot?.screenContext.orEmpty()
-            aiClient.ask(text, screenContext, trollEnabled, jpeg) { result ->
-                if (serviceDestroyed) return@ask
-                result.onSuccess { response -> speak(response) }
-                    .onFailure { error ->
-                        statusText.text = "IA indisponível: ${error.message ?: "tente novamente"}"
-                    }
-            }
-        }
-
-        override fun onPartialResults(partialResults: android.os.Bundle?) {
-            if (serviceDestroyed || !::statusText.isInitialized) return
-            val text = partialResults
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
-                .orEmpty()
-            if (text.isNotBlank()) statusText.text = "● Ouvindo: $text"
-        }
-
-        override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
-        override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onRmsChanged(rmsdB: Float) = Unit
-    }
-
-    private fun speak(text: String) {
-        if (!ttsReady || serviceDestroyed) {
-            if (::statusText.isInitialized) statusText.text = "Voz ainda inicializando..."
-            return
-        }
-        if (::statusText.isInitialized) statusText.text = "● ClaudGame: $text"
-        try {
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "claudgame-reply")
-        } catch (error: Exception) {
-            android.util.Log.e("ClaudGameOverlay", "Falha ao falar resposta", error)
-        }
-    }
-
-    override fun onDestroy() {
-        serviceDestroyed = true
-        CaptureBridge.removeListener(snapshotListener)
-        CaptureBridge.sessionActive = false
-        try {
-            speechRecognizer?.destroy()
-        } catch (_: Exception) {
-        }
-        speechRecognizer = null
-        aiClient.close()
-        try {
-            tts?.stop()
-            tts?.shutdown()
-        } catch (_: Exception) {
-        }
-        tts = null
-        panel?.let {
-            try {
-                if (it.isAttachedToWindow) windowManager.removeView(it)
-            } catch (_: Exception) {
-            }
-        }
-        panel = null
-        // Captura e bolha são uma única sessão: não deixar a captura continuar
-        // escondida depois que o companheiro for encerrado.
-        stopService(Intent(this, com.lucasmoraes.claudgame.capture.ScreenCaptureService::class.java))
-        super.onDestroy()
     }
 
     private fun createChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "ClaudGame Companion", NotificationManager.IMPORTANCE_LOW)
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+            NotificationChannel(CHANNEL, "ClaudGame • ${Persona.NAME}", NotificationManager.IMPORTANCE_LOW)
         )
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 }

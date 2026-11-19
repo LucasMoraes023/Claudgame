@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+        Tema 100% da plataforma (sem AppCompat/Material): o Game Hub é escuro por design e todas as cores
+        são definidas explicitamente, então não existe mais texto escuro sobre fundo escuro quando o
+        aparelho está no modo claro.
+    -->
     <style name="Theme.ClaudGame" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/cg_bg</item>
         <item name="android:colorPrimary">@color/cg_accent</item>

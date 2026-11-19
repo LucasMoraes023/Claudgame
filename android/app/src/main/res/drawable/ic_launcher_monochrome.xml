@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Versão monocromática (ícones temáticos do Android 13+): silhueta com recortes (evenOdd). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="3" android:scaleY="3" android:translateX="18" android:translateY="16">
-        <path android:fillColor="#FF000000" android:fillType="evenOdd" android:pathData="M7.5,7 H16.5 C19,7 21,9 21,11.5 C21,14 20.5,17 19,17.8 C17.5,18.6 16.2,17.5 15.2,16 H8.8 C7.8,17.5 6.5,18.6 5,17.8 C3.5,17 3,14 3,11.5 C3,9 5,7 7.5,7 Z M7.9,9.5 H9.1 V10.9 H10.5 V12.1 H9.1 V13.5 H7.9 V12.1 H6.5 V10.9 H7.9 Z M14.5,12.5 A1,1 0 1 0 16.5,12.5 A1,1 0 1 0 14.5,12.5 Z M16.5,10.5 A1,1 0 1 0 18.5,10.5 A1,1 0 1 0 16.5,10.5 Z" />
+    <group
+        android:scaleX="3"
+        android:scaleY="3"
+        android:translateX="18"
+        android:translateY="16">
+        <path
+            android:fillColor="#FF000000"
+            android:fillType="evenOdd"
+            android:pathData="M7.5,7 H16.5 C19,7 21,9 21,11.5 C21,14 20.5,17 19,17.8 C17.5,18.6 16.2,17.5 15.2,16 H8.8 C7.8,17.5 6.5,18.6 5,17.8 C3.5,17 3,14 3,11.5 C3,9 5,7 7.5,7 Z M7.9,9.5 H9.1 V10.9 H10.5 V12.1 H9.1 V13.5 H7.9 V12.1 H6.5 V10.9 H7.9 Z M14.5,12.5 A1,1 0 1 0 16.5,12.5 A1,1 0 1 0 14.5,12.5 Z M16.5,10.5 A1,1 0 1 0 18.5,10.5 A1,1 0 1 0 16.5,10.5 Z" />
     </group>
-    <path android:fillColor="#FF000000" android:pathData="M72,26.5 L73.6,29.9 L77,31.5 L73.6,33.1 L72,36.5 L70.4,33.1 L67,31.5 L70.4,29.9 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M72,26.5 L73.6,29.9 L77,31.5 L73.6,33.1 L72,36.5 L70.4,33.1 L67,31.5 L70.4,29.9 Z" />
 </vector>

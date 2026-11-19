@@ -1,0 +1,24 @@
+package com.lucasmoraes.claudgame.companion
+
+/** Memória curta da conversa (últimas falas), enviada ao modelo para a conversa ter continuidade. */
+class ConversationMemory(private val maxTurns: Int = 12, private val maxChars: Int = 1800) {
+    enum class Who { PLAYER, ZULEIDE }
+
+    data class Turn(val who: Who, val text: String)
+
+    private val turns = ArrayDeque<Turn>()
+    private val spaces = Regex("\\s+")
+
+    fun add(who: Who, text: String) {
+        val clean = text.replace(spaces, " ").trim().take(240)
+        if (clean.isEmpty()) return
+        turns.addLast(Turn(who, clean))
+        while (turns.size > maxTurns || totalChars() > maxChars) turns.removeFirst()
+    }
+
+    fun snapshot(): List<Turn> = turns.toList()
+
+    fun clear() = turns.clear()
+
+    private fun totalChars(): Int = turns.sumOf { it.text.length }
+}

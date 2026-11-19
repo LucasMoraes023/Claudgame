@@ -25,7 +25,9 @@ object CaptureBridge {
         val jpeg: ByteArray?,
         val status: String,
         val capturedAt: Long = System.currentTimeMillis(),
-        val detail: String? = null
+        val detail: String? = null,
+        /** Miniatura em luminância (ver FrameSignature): permite saber se a tela mudou de verdade. */
+        val signature: ByteArray? = null
     )
 
     fun interface Listener {
