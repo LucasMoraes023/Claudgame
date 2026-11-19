@@ -106,14 +106,15 @@ test("modo zueira muda a persona e a temperatura", () => {
   assert.ok(normal.body.system_instruction.parts[0].text.includes("MODO TREINADORA"));
   assert.ok(troll.body.system_instruction.parts[0].text.includes("MODO ZUEIRA LIGADO"));
   assert.ok(troll.body.generationConfig.temperature > normal.body.generationConfig.temperature);
-  assert.ok(systemInstruction({ troll: true }).includes("SEM ofensas a raça, gênero"));
+  assert.ok(systemInstruction({ troll: true }).includes("assistência tática como prioridade absoluta"));
   assert.ok(systemInstruction({ troll: false }).includes("ZULEIDE"));
 });
 
 test("comentário espontâneo: prompt de observação, limite menor e dicas de tela parada", () => {
   const built = buildGeminiRequest({ kind: "proactive", image_base64: "SU1H", hints: { idle_seconds: 42, screen_static_seconds: 31 }, troll: true });
   const text = built.body.contents[0].parts[0].text;
-  assert.ok(text.includes("MODO OBSERVAÇÃO"));
+  assert.ok(text.includes("MODO TREINADORA EM TEMPO REAL"));
+  assert.ok(text.includes("recomende UMA ação específica agora"));
   assert.ok(text.includes("sem falar há 42 segundos"));
   assert.ok(text.includes("praticamente parada há 31 segundos"));
   assert.equal(built.body.generationConfig.maxOutputTokens, 180);
