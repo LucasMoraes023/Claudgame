@@ -93,15 +93,17 @@ test("turno com áudio + tela: monta o pedido certo e repassa o streaming em eve
     assert.ok(parts[0].text.includes("Jogador: oi") && parts[0].text.includes("Zuleide: e aí!"));
     assert.ok(parts[0].text.includes("Menu"));
     assert.deepEqual(parts.slice(1).map(p => p.inline_data.mime_type), ["image/jpeg", "audio/wav"]);
-    assert.ok(sent.system_instruction.parts[0].text.includes("MODO PARCEIRA"));
-    assert.equal(sent.generationConfig.maxOutputTokens, 170);
+    assert.ok(sent.system_instruction.parts[0].text.includes("MODO TREINADORA"));
+    assert.ok(sent.system_instruction.parts[0].text.includes("DÊ UMA AÇÃO CONCRETA"));
+    assert.ok(sent.system_instruction.parts[0].text.includes("PROTOCOLO DE ASSISTÊNCIA TÁTICA"));
+    assert.equal(sent.generationConfig.maxOutputTokens, 240);
   });
 });
 
 test("modo zueira muda a persona e a temperatura", () => {
   const normal = buildGeminiRequest({ message: "oi", troll: false });
   const troll = buildGeminiRequest({ message: "oi", troll: true });
-  assert.ok(normal.body.system_instruction.parts[0].text.includes("MODO PARCEIRA"));
+  assert.ok(normal.body.system_instruction.parts[0].text.includes("MODO TREINADORA"));
   assert.ok(troll.body.system_instruction.parts[0].text.includes("MODO ZUEIRA LIGADO"));
   assert.ok(troll.body.generationConfig.temperature > normal.body.generationConfig.temperature);
   assert.ok(systemInstruction({ troll: true }).includes("SEM ofensas a raça, gênero"));
@@ -114,7 +116,7 @@ test("comentário espontâneo: prompt de observação, limite menor e dicas de t
   assert.ok(text.includes("MODO OBSERVAÇÃO"));
   assert.ok(text.includes("sem falar há 42 segundos"));
   assert.ok(text.includes("praticamente parada há 31 segundos"));
-  assert.equal(built.body.generationConfig.maxOutputTokens, 90);
+  assert.equal(built.body.generationConfig.maxOutputTokens, 180);
   assert.equal(built.body.contents[0].parts.length, 2); // texto + imagem (nunca áudio)
 });
 
