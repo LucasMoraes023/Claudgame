@@ -64,6 +64,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
     private var dot: GradientDrawable? = null
     private var stateText: TextView? = null
     private var micButton: TextView? = null
+    private var tacticalButton: TextView? = null
     private var trollButton: TextView? = null
 
     private var brain: ZuleideBrain? = null
@@ -239,6 +240,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
             contentDescription = description
             setOnClickListener { onClick() }
         }
+        val tactical = button("🎯", "Pedir uma análise tática imediata da partida") { brain?.requestTacticalAdvice() }
         val mic = button("🎙", "Ligar ou desligar a escuta automática") { toggleMic() }
         val troll = button("😈", "Ligar ou desligar o modo zueira") { toggleTroll() }
         val close = button("✕", "Encerrar a ${Persona.NAME}") { stopSession() }.apply { setTextColor(muted) }
@@ -254,6 +256,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
             }
         }
         root.addView(identity)
+        root.addView(tactical, LinearLayout.LayoutParams(dp(34), dp(34)))
         root.addView(mic, LinearLayout.LayoutParams(dp(34), dp(34)))
         root.addView(troll, LinearLayout.LayoutParams(dp(34), dp(34)))
         root.addView(close, LinearLayout.LayoutParams(dp(34), dp(34)))
@@ -261,6 +264,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
         dot = statusDot
         stateText = state
         micButton = mic
+        tacticalButton = tactical
         trollButton = troll
 
         val params = WindowManager.LayoutParams(
@@ -288,6 +292,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
             dot = null
             stateText = null
             micButton = null
+            tacticalButton = null
             trollButton = null
             false
         }
@@ -442,7 +447,7 @@ class ClaudGameOverlayService : Service(), ZuleideBrain.Ui {
         val builder = Notification.Builder(this, CHANNEL)
             .setContentTitle("${Persona.NAME} está com você")
             .setContentText(
-                if (listening) "Ouvindo o microfone e comentando a partida" else "Microfone silenciado • ela segue comentando"
+                if (listening) "Escuta ativa • assistência tática durante a partida" else "Microfone silenciado • análise tática disponível"
             )
             .setSmallIcon(R.drawable.ic_stat_claudgame)
             .setContentIntent(openHub)
