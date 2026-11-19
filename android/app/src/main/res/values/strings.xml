@@ -2,17 +2,17 @@
 <resources>
     <string name="app_name">ClaudGame</string>
     <string name="hub_title">CLAUDGAME</string>
-    <string name="hub_subtitle">GAME HUB • ZULEIDE AI</string>
+    <string name="hub_subtitle">GAME HUB • ZAYRO AI</string>
     <string name="hub_ready">Pronto para jogar</string>
     <string name="hub_game_section">JOGO DA SESSÃO</string>
     <string name="hub_play">▶  INICIAR JOGO</string>
-    <string name="hub_ai_start">◉  ATIVAR ZULEIDE</string>
-    <string name="hub_ai_stop">■  ENCERRAR ZULEIDE</string>
+    <string name="hub_ai_start">◉  ATIVAR ZAYRO</string>
+    <string name="hub_ai_stop">■  ENCERRAR ZAYRO</string>
     <string name="hub_troll_off">😈  MODO TROLAGEM: DESLIGADO</string>
     <string name="hub_troll_on">😈  MODO TROLAGEM: ATIVADO</string>
-    <string name="hub_info">A Zuleide escuta o microfone o tempo todo enquanto estiver ativa (você pode silenciar pelo painel ou pela notificação) e vê a tela inteira. A sua voz e as imagens da tela são enviadas ao Gemini pelo seu servidor. Toque no nome dela no painel para falar na hora.</string>
+    <string name="hub_info">A ZAYRO escuta o microfone o tempo todo enquanto estiver ativa (você pode silenciar pelo painel ou pela notificação) e vê a tela inteira. A sua voz e as imagens da tela são enviadas ao Gemini pelo seu servidor. Toque no nome dela no painel para falar na hora.</string>
     <string name="hub_spinner_label">Jogo da sessão</string>
-    <string name="hub_proactive_on">💬  ZULEIDE FALA SOZINHA: LIGADO</string>
-    <string name="hub_proactive_off">💬  ZULEIDE FALA SOZINHA: DESLIGADO</string>
-    <string name="hub_voice">🔊  TROCAR VOZ DA ZULEIDE</string>
+    <string name="hub_proactive_on">💬  ZAYRO FALA SOZINHA: LIGADO</string>
+    <string name="hub_proactive_off">💬  ZAYRO FALA SOZINHA: DESLIGADO</string>
+    <string name="hub_voice">🔊  TROCAR VOZ DA ZAYRO</string>
 </resources>
