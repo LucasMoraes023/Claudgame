@@ -1,7 +1,8 @@
 package com.lucasmoraes.claudgame.companion
 
+/** Build Android atualizado para acompanhar o Worker ZAYRO publicado. */
 /**
- * Decide QUANDO a Zuleide comenta por conta própria. Lógica pura e testável.
+ * Decide QUANDO a Zuleide comenta por conta própria.
  *
  * Modo normal: análise a cada ~8–14 s, antecipada quando a tela muda.
  * Modo zueira: análise a cada ~8–16 s, sem repetir observações em tela parada.
