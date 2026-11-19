@@ -3,18 +3,18 @@ package com.lucasmoraes.claudgame.companion
 import kotlin.random.Random
 
 /**
- * Falas locais da Zuleide para quando a IA online não está disponível (sem internet, cota, servidor antigo)
+ * Falas locais da ZAYRO para quando a IA online não está disponível (sem internet, cota, servidor antigo)
  * e para a saudação inicial, que sai na hora, sem esperar rede.
  */
 object OfflineLines {
     private val greetingNormal = listOf(
-        "Oi, aqui é a Zuleide! Pode falar comigo quando quiser.",
-        "Zuleide na área! Eu comento, você joga. Combinado?",
+        "Oi, aqui é a ZAYRO! Pode falar comigo quando quiser.",
+        "ZAYRO na área! Eu comento, você joga. Combinado?",
         "Cheguei! Tô de olho na partida, qualquer coisa é só falar."
     )
     private val greetingTroll = listOf(
-        "A Zuleide chegou, e eu vim pra pegar no seu pé!",
-        "Prepara, que a Zuleide vai te zoar a partida inteira.",
+        "A ZAYRO chegou, e eu vim pra pegar no seu pé!",
+        "Prepara, que a ZAYRO vai te zoar a partida inteira.",
         "Opa, chegou a sua pior companheira de jogo! Boa sorte."
     )
     private val idleNormal = listOf(
