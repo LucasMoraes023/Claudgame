@@ -9,7 +9,7 @@ O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto 
 - 🎮 Biblioteca de jogos instalados e acesso rápido.
 - ⚡ Modo de jogo usando somente recursos que o Android realmente permite controlar.
 - 👁️ Captura de tela com **MediaProjection**, sempre mediante autorização do usuário.
-- 🗣️ **Zuleide**, a companheira de jogo: escuta o jogador sem apertar nada, responde por voz em português e comenta a partida por conta própria.
+- 🗣️ **ZAYRO**, a companheira de jogo: escuta o jogador sem apertar nada, responde por voz em português e comenta a partida por conta própria.
 - 😈 **Modo Trolagem** (zueira): ela fica pegando no pé do jogador o tempo todo, mesmo sem ele falar.
 - 🪟 Painel flutuante mínimo sobre o jogo, sem texto na tela.
 - 🔐 Nenhuma chave de API é embutida no APK.
@@ -27,11 +27,11 @@ O projeto Python/web original foi preservado em `app/` e `frontend/`. O produto 
 - TTS nativo Android em português brasileiro (motor do Google quando instalado, voz de maior qualidade, troca de voz no Game Hub).
 - Modo Trolagem como configuração local.
 - Captura JPEG compactada (1024 px) do frame atual, enviada junto com a voz do jogador para análise multimodal.
-- Cliente Android com resposta em streaming (a Zuleide começa a falar na primeira frase) para o proxy seguro Gemini.
+- Cliente Android com resposta em streaming (a ZAYRO começa a falar na primeira frase) para o proxy seguro Gemini.
 - Worker Cloudflare em `cloudflare-worker/` para manter a chave Gemini no servidor.
 - GitHub Actions para testar e gerar o APK debug (com Gradle Wrapper).
 - Painel flutuante compacto e arrastável (estado, mic, zueira, encerrar) e ações "Silenciar mic"/"Encerrar" na notificação.
-- Falas locais da Zuleide quando a IA online está indisponível (saudação, avisos e comentários).
+- Falas locais da ZAYRO quando a IA online está indisponível (saudação, avisos e comentários).
 - Testes unitários da lógica pura no Android (detector de fala, parser de streaming, planejador, voz, JSON) e do Worker (Node).
 
 ## Arquitetura planejada
@@ -106,26 +106,26 @@ Tecnologias:
 - targetSdk 35
 - Dependências: somente `com.google.mlkit:text-recognition` (OCR). O app usa apenas APIs da plataforma; AppCompat/Material foram removidos.
 
-## IA online (Gemini) e a Zuleide
+## IA online (Gemini) e a ZAYRO
 
 O app fala com o Worker em `cloudflare-worker/`, que chama a Gemini Developer API (padrão `gemini-3.5-flash-lite`, que já usa raciocínio mínimo para responder rápido; dá para trocar pela variável `GEMINI_MODEL`). A chave `GEMINI_API_KEY` fica só no Cloudflare. Para ativar, siga `cloudflare-worker/README.md`. Sem o secret `CLAUDGAME_AI_BACKEND_URL`, o build usa o Worker padrão definido em `android/app/build.gradle.kts`.
 
 **Protocolo v2** (`POST /api/zuleide/turn`, resposta em streaming SSE): o app manda a fala do jogador (WAV 16 kHz) e a tela (JPEG) numa única chamada; o Gemini ouve, vê e responde, sem um reconhecedor de voz separado. Isso corta uma etapa de rede e permite falar a primeira frase enquanto o resto ainda está sendo gerado. A rota antiga `/api/game/analyze` continua funcionando para o app 0.9.x.
 
-Como a Zuleide funciona:
+Como a ZAYRO funciona:
 - **Escuta automática:** um detector de fala (VAD) recorta cada fala do jogador; nada é gravado em disco e o áudio só é enviado quando há fala. O microfone é pausado enquanto ela fala ou pensa, para ela não se ouvir. Fones de ouvido ajudam muito, porque o som do jogo no alto-falante também chega ao microfone.
-- **Fala espontânea:** a cada ~30–50 s (modo normal) ou ~9–19 s (zueira) ela olha a tela e comenta, se houver algo novo. Dá para desligar no Game Hub ("Zuleide fala sozinha").
-- **Pedidos por voz:** "Zuleide, fica quieta por 10 minutos" faz ela parar de falar sozinha pelo tempo pedido.
+- **Fala espontânea:** a cada ~30–50 s (modo normal) ou ~9–19 s (zueira) ela olha a tela e comenta, se houver algo novo. Dá para desligar no Game Hub ("ZAYRO fala sozinha").
+- **Pedidos por voz:** "ZAYRO, fica quieta por 10 minutos" faz ela parar de falar sozinha pelo tempo pedido.
 - **Painel:** tocar no nome = falar agora (interrompe a fala); 🎙 liga/desliga a escuta; 😈 liga/desliga a zueira; ✕ encerra. Os mesmos controles de mic e encerrar existem na notificação.
-- **Voz:** o Game Hub tem "Trocar voz da Zuleide" para experimentar as vozes pt-BR instaladas (instale vozes de alta qualidade em Configurações > Texto para voz > Google).
+- **Voz:** o Game Hub tem "Trocar voz da ZAYRO" para experimentar as vozes pt-BR instaladas (instale vozes de alta qualidade em Configurações > Texto para voz > Google).
 
-Privacidade: com a Zuleide ativa o microfone fica aberto e a tela inteira é capturada; a fala detectada e as imagens da tela são enviadas ao Gemini pelo seu Worker. No plano gratuito o Google pode usar esses dados. Evite abrir conversas ou dados pessoais com ela ativa e use o mic mudo quando quiser.
+Privacidade: com a ZAYRO ativa o microfone fica aberto e a tela inteira é capturada; a fala detectada e as imagens da tela são enviadas ao Gemini pelo seu Worker. No plano gratuito o Google pode usar esses dados. Evite abrir conversas ou dados pessoais com ela ativa e use o mic mudo quando quiser.
 
 Cota: no modo zueira são muitas chamadas por hora. Se a cota gratuita do Gemini acabar o painel avisa ("cota do Gemini") e ela fica quieta por 90 s antes de tentar de novo.
 
-## Versão 0.10.0 — Zuleide
+## Versão 0.10.0 — ZAYRO
 
-- Nova assistente **Zuleide** (nome na interface, nas notificações e no prompt).
+- Nova assistente **ZAYRO** (nome na interface, nas notificações e no prompt).
 - **Escuta automática** por VAD (sem botão "falar") com mic mudo no painel/notificação e "tocar para falar".
 - **Fala espontânea** e modo zueira bem mais debochado, com ritmo próprio e sem repetir piadas (memória da conversa).
 - **Mais rápido:** áudio + tela numa só chamada ao Gemini, resposta em streaming com fala frase a frase, imagem de 1024 px, conexão aquecida ao iniciar.
