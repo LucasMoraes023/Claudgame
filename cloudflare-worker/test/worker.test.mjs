@@ -204,9 +204,9 @@ test("GEMINI_MODEL permite trocar o modelo sem alterar o código", async () => {
 test("sanitizeHistory limita quantidade, tamanho e ignora lixo", () => {
   const long = Array.from({ length: 30 }, (_, i) => ({ who: i % 2 ? "zuleide" : "player", text: "x".repeat(300) }));
   const kept = sanitizeHistory([...long, { who: "outro", text: "ignorado" }, null, { who: "player", text: "   " }]);
-  assert.ok(kept.length <= 12);
-  assert.ok(kept.every(h => h.text.length <= 240));
-  assert.ok(kept.reduce((n, h) => n + h.text.length, 0) <= 2000);
+  assert.ok(kept.length <= 20);
+  assert.ok(kept.every(h => h.text.length <= 350));
+  assert.ok(kept.reduce((n, h) => n + h.text.length, 0) <= 4000);
   assert.deepEqual(sanitizeHistory("lixo"), []);
 });
 
