@@ -1,0 +1,80 @@
+name: Import ClaudGame source ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Claudgame-fonte-corrigido.zip'
+      - '.github/workflows/import-claudgame-zip.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract source into repository root
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, shutil, zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path("Claudgame-fonte-corrigido.zip")
+          if not archive.exists():
+              print("ZIP not present; nothing to import.")
+              raise SystemExit(0)
+
+          temp = Path("/tmp/claudgame-import")
+          shutil.rmtree(temp, ignore_errors=True)
+          temp.mkdir(parents=True)
+
+          with zipfile.ZipFile(archive) as z:
+              for item in z.infolist():
+                  p = PurePosixPath(item.filename)
+                  if p.is_absolute() or ".." in p.parts:
+                      raise RuntimeError(f"Unsafe ZIP path: {item.filename}")
+                  parts = p.parts[1:] if p.parts and p.parts[0].lower().startswith("claudgame") else p.parts
+                  if not parts:
+                      continue
+                  rel = Path(*parts)
+                  if ".git" in rel.parts or rel.name == "claudgame-debug.keystore":
+                      print(f"Skipped protected file: {item.filename}")
+                      continue
+                  target = temp / rel
+                  if item.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                  else:
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      with z.open(item) as src, target.open("wb") as dst:
+                          shutil.copyfileobj(src, dst)
+
+          for src in temp.rglob("*"):
+              if src.is_file():
+                  rel = src.relative_to(temp)
+                  dst = Path(".") / rel
+                  dst.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(src, dst)
+
+          archive.unlink()
+          PY
+
+      - name: Commit imported source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+          else
+            git commit -m "Import corrected ClaudGame source"
+            git push origin HEAD:main
+          fi
