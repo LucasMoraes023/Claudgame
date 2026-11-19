@@ -83,7 +83,7 @@ test("turno com áudio + tela: monta o pedido certo e repassa o streaming em eve
     assert.deepEqual(events.map(e => e.t || (e.done ? "DONE" : "?")), ["Opa, ", "bora lá!\n###OUVI: oi zuleide", "DONE"]);
 
     assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /gemini-3\.5-flash-lite:streamGenerateContent\?alt=sse$/);
+    assert.match(calls[0].url, /gemini-3\.8-flash:streamGenerateContent\?alt=sse$/);
     assert.equal(calls[0].init.headers["x-goog-api-key"], "test-key");
     const sent = JSON.parse(calls[0].init.body);
     const parts = sent.contents[0].parts;
