@@ -63,20 +63,20 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
-/** Limpa o histórico vindo do app: no máximo 12 falas, 240 caracteres cada, ~2000 no total. */
+/** Limpa o histórico vindo do app: no máximo 20 falas, 350 caracteres cada, ~4000 no total. */
 export function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
   const cleaned = [];
-  for (const item of history.slice(-12)) {
+  for (const item of history.slice(-20)) {
     const who = item?.who === "player" ? "player" : item?.who === "zuleide" ? "zuleide" : null;
-    const text = String(item?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+    const text = String(item?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 350);
     if (who && text) cleaned.push({ who, text });
   }
   let total = 0;
   const kept = [];
   for (let i = cleaned.length - 1; i >= 0; i--) {
     total += cleaned[i].text.length;
-    if (total > 2000) break;
+    if (total > 4000) break;
     kept.unshift(cleaned[i]);
   }
   return kept;
