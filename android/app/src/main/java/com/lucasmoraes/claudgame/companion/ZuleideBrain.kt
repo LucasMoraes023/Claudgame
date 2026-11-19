@@ -12,7 +12,7 @@ import com.lucasmoraes.claudgame.capture.CaptureBridge
 import kotlin.random.Random
 
 /**
- * Cérebro da Zuleide. Junta as peças e decide o que fazer a cada momento:
+ * Cérebro da ZAYRO. Junta as peças e decide o que fazer a cada momento:
  *  - ESCUTA automática (sem apertar nada): recorta cada fala do jogador e manda o áudio + a tela ao Gemini;
  *  - FALA espontânea: comenta a partida por conta própria (mais e mais zoeira no modo troll);
  *  - RESPOSTA em streaming: começa a falar na primeira frase, sem esperar o texto inteiro;
@@ -159,7 +159,7 @@ class ZuleideBrain(
             return
         }
         if (isBusy()) {
-            ui.onFlash("aguarde a Zuleide")
+            ui.onFlash("aguarde a ZAYRO")
             return
         }
         val snapshot = CaptureBridge.latest
@@ -363,7 +363,7 @@ class ZuleideBrain(
         turnId++ // descarta callbacks atrasados do turno cancelado
         main.removeCallbacks(watchdogRunnable)
         // Se o comentário foi cortado porque o jogador falou e essa fala for descartada, ninguém mais
-        // reagenda: sem isto a Zuleide ficaria muda para sempre.
+        // reagenda: sem isto a ZAYRO ficaria muda para sempre.
         scheduleProactive(nextProactiveDelay())
     }
 
@@ -399,7 +399,7 @@ class ZuleideBrain(
             if (kind == ZuleideClient.Turn.USER) {
                 memory.add(ConversationMemory.Who.PLAYER, result.heard ?: "(falou algo por áudio)")
             }
-            memory.add(ConversationMemory.Who.ZULEIDE, result.spokenText)
+            memory.add(ConversationMemory.Who.ZAYRO, result.spokenText)
             lastActivityAt = now()
             if (kind == ZuleideClient.Turn.PROACTIVE) commentedOnThisScreen = true
         } else if (result.blocked && kind == ZuleideClient.Turn.USER) {
