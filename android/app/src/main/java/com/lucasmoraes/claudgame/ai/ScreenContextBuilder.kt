@@ -5,7 +5,7 @@ package com.lucasmoraes.claudgame.ai
  * jogo (derrota, vitória, carregamento, menu, objetivo). É lógica pura, coberta por testes unitários.
  */
 object ScreenContextBuilder {
-    private const val MAX_VISIBLE_TEXT = 220
+    private const val MAX_VISIBLE_TEXT = 600
     private val whitespace = Regex("\\s+")
 
     fun build(rawText: String): String {
