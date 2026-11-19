@@ -2,7 +2,7 @@ package com.lucasmoraes.claudgame.companion
 
 /** Memória curta da conversa (últimas falas), enviada ao modelo para a conversa ter continuidade. */
 class ConversationMemory(private val maxTurns: Int = 20, private val maxChars: Int = 4000) {
-    enum class Who { PLAYER, ZULEIDE }
+    enum class Who { PLAYER, ZAYRO }
 
     data class Turn(val who: Who, val text: String)
 
