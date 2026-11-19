@@ -3,7 +3,7 @@ package com.lucasmoraes.claudgame.companion
 /**
  * Decide QUANDO a Zuleide comenta por conta própria. Lógica pura e testável.
  *
- * Modo normal: um comentário a cada ~30–50 s, só quando algo mudou na tela.
+ * Modo normal: uma orientação tática a cada ~12–20 s, quando houver contexto útil.
  * Modo zueira: a cada ~9–19 s e, se a tela ficar parada, ainda cobra o jogador de tempos em tempos.
  */
 object ProactivePlanner {
@@ -25,7 +25,7 @@ object ProactivePlanner {
         class Wait(val reason: String, val retryInMs: Long) : Decision()
     }
 
-    private const val MIN_GAP_NORMAL_MS = 18_000L
+    private const val MIN_GAP_NORMAL_MS = 10_000L
     private const val MIN_GAP_TROLL_MS = 6_000L
     private const val STATIC_TAUNT_AFTER_MS = 45_000L
     private const val STATIC_TAUNT_GAP_MS = 30_000L
@@ -34,7 +34,7 @@ object ProactivePlanner {
 
     /** Espera até a próxima tentativa; [random] em 0.0..1.0. */
     fun nextDelayMs(troll: Boolean, random: Double): Long {
-        val (min, max) = if (troll) 9_000L to 19_000L else 28_000L to 52_000L
+        val (min, max) = if (troll) 9_000L to 19_000L else 12_000L to 20_000L
         return min + ((max - min) * random.coerceIn(0.0, 1.0)).toLong()
     }
 
