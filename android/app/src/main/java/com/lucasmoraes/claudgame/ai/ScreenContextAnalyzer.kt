@@ -26,11 +26,11 @@ class ScreenContextAnalyzer(
 ) {
     private companion object {
         const val TAG = "ClaudGameVision"
-        // Quadro menor = envio e resposta mais rápidos. 1024 px no lado maior ainda deixa a interface legível.
-        const val JPEG_MAX_SIDE = 1024
-        const val JPEG_QUALITY = 62
-        const val SOFT_JPEG_LIMIT = 600_000
-        const val HARD_JPEG_LIMIT = 1_000_000
+        // Quadro menor = envio e resposta mais rápidos. 1440 px no lado maior preserva melhor HUD e textos pequenos.
+        const val JPEG_MAX_SIDE = 1440
+        const val JPEG_QUALITY = 78
+        const val SOFT_JPEG_LIMIT = 1_200_000
+        const val HARD_JPEG_LIMIT = 1_800_000
         const val GRID_X = 128
         const val GRID_Y = 72
         const val STALE_BUSY_MS = 20_000L
