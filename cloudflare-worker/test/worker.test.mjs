@@ -42,7 +42,7 @@ test("rota de versão responde sem precisar da chave", async () => {
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.version, 2);
-  assert.equal(body.assistant, "Zuleide");
+  assert.equal(body.assistant, "ZAYRO");
   assert.equal(body.configured, false);
 });
 
@@ -90,7 +90,7 @@ test("turno com áudio + tela: monta o pedido certo e repassa o streaming em eve
     assert.equal(sent.contents.length, 1);
     assert.equal(sent.contents[0].role, "user");
     assert.ok(parts[0].text.includes("MODO CONVERSA"));
-    assert.ok(parts[0].text.includes("Jogador: oi") && parts[0].text.includes("Zuleide: e aí!"));
+    assert.ok(parts[0].text.includes("Jogador: oi") && parts[0].text.includes("ZAYRO: e aí!"));
     assert.ok(parts[0].text.includes("Menu"));
     assert.deepEqual(parts.slice(1).map(p => p.inline_data.mime_type), ["image/jpeg", "audio/wav"]);
     assert.ok(sent.system_instruction.parts[0].text.includes("MODO PARCEIRA ANALISTA"));
@@ -107,7 +107,7 @@ test("modo zueira muda a persona e a temperatura", () => {
   assert.ok(troll.body.system_instruction.parts[0].text.includes("MODO TROLAGEM OPCIONAL"));
   assert.ok(troll.body.generationConfig.temperature > normal.body.generationConfig.temperature);
   assert.ok(systemInstruction({ troll: true }).includes("assistência tática como prioridade absoluta"));
-  assert.ok(systemInstruction({ troll: false }).includes("ZULEIDE"));
+  assert.ok(systemInstruction({ troll: false }).includes("ZAYRO"));
 });
 
 test("comentário espontâneo: prompt de observação, limite menor e dicas de tela parada", () => {
