@@ -3,7 +3,7 @@ import { geminiToClientStream, sseEvent } from "./stream.js";
 
 // Gemini 3.5 Flash-Lite: multimodal (texto, imagem e áudio) e com raciocínio mínimo por padrão,
 // ou seja, a menor latência da linha. Dá para trocar sem mexer no código: variável GEMINI_MODEL.
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models/";
 
 const corsHeaders = {
